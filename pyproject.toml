@@ -1,0 +1,116 @@
+[project]
+name = "quant-platform"
+version = "0.1.0"
+description = "Personal quantitative trading research platform for A-shares"
+requires-python = ">=3.11"
+
+dependencies = [
+    # === Data Sources ===
+    "akshare>=1.16.0",
+    "adata>=1.0.0",
+    "ashare>=0.0.7",
+    "tushare>=1.4.0",
+
+    # === Storage ===
+    "duckdb>=1.0.0",
+    "pyarrow>=17.0.0",
+
+    # === Core Engine ===
+    # AKQuant is the core framework. If PyPI version is unavailable,
+    # install from source: uv pip install git+https://github.com/akfamily/akquant
+    "akquant>=0.1.0",
+
+    # === Analysis & Computation ===
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "scipy>=1.13.0",
+    "optuna>=4.0.0",
+
+    # === Fast Scanning (optional but recommended) ===
+    "vectorbt>=0.26.0",
+
+    # === Visualization & Dashboard ===
+    "streamlit>=1.38.0",
+    "plotly>=5.22.0",
+
+    # === Ops: Scheduling & Logging ===
+    "apscheduler>=3.10.0",
+    "loguru>=0.7.0",
+
+    # === Notifications (DingTalk webhook) ===
+    "requests>=2.32.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.6.0",
+    "mypy>=1.10.0",
+]
+
+# === Ruff (linter + formatter) ===
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["research", "backtest", "execution", "ops"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific rules
+]
+ignore = [
+    "E501", # line too long (formatter handles this)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# === Mypy (type checker) ===
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true  # many quant libs lack type stubs
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# === Pytest ===
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+
+# === Coverage ===
+[tool.coverage.run]
+source = ["research", "backtest", "execution", "ops"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+show_missing = true
