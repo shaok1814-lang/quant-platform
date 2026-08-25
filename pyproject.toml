@@ -6,9 +6,12 @@ requires-python = ">=3.11"
 
 dependencies = [
     # === Data Sources ===
+    # akshare (primary) + adata (validator) provide all needed A-share data
+    # including realtime quotes. Ashare (mpquant/Ashare) was considered as a
+    # realtime supplement but is git-only and redundant with akshare.
+    # tushare is kept for cross-validation only; requires TUSHARE_TOKEN env var.
     "akshare>=1.16.0",
     "adata>=1.0.0",
-    "ashare>=0.0.7",
     "tushare>=1.4.0",
 
     # === Storage ===
@@ -16,8 +19,6 @@ dependencies = [
     "pyarrow>=17.0.0",
 
     # === Core Engine ===
-    # AKQuant is the core framework. If PyPI version is unavailable,
-    # install from source: uv pip install git+https://github.com/akfamily/akquant
     "akquant>=0.1.0",
 
     # === Analysis & Computation ===
