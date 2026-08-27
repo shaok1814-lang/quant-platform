@@ -54,7 +54,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["research", "backtest", "execution", "ops"]
+src = ["data_layer", "research", "backtest", "execution", "ops"]
 
 [tool.ruff.lint]
 select = [
@@ -73,6 +73,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B", "SIM", "RUF003"]  # RUF003: tests use Chinese full-width punctuation in comments
+"data_layer/*" = ["RUF002", "RUF003"]  # RUF002/RUF003: Chinese docstrings use full-width punctuation by convention
 
 [tool.ruff.format]
 quote-style = "double"
@@ -100,6 +101,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Make project-root top-level packages (data_layer/, research/, ...)
+# importable from tests. Without this, pytest's default rootdir
+# resolution won't add cwd to sys.path and ``import data_layer`` fails.
+pythonpath = ["."]
 addopts = [
     "-v",
     "--strict-markers",
@@ -108,7 +113,7 @@ addopts = [
 
 # === Coverage ===
 [tool.coverage.run]
-source = ["research", "backtest", "execution", "ops"]
+source = ["data_layer", "research", "backtest", "execution", "ops"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
