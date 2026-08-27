@@ -72,7 +72,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B", "SIM"]
+"tests/*" = ["B", "SIM", "RUF003"]  # RUF003: tests use Chinese full-width punctuation in comments
 
 [tool.ruff.format]
 quote-style = "double"
@@ -80,7 +80,10 @@ indent-style = "space"
 
 # === Mypy (type checker) ===
 [tool.mypy]
-python_version = "3.11"
+# Bumped from 3.11 → 3.12: numpy >= 2.x ships PEP 695 `type X = ...`
+# aliases in its .pyi stubs, which mypy only accepts on Python 3.12+.
+# CLAUDE.md sets the floor at "3.11+", so 3.12 is in-range.
+python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
