@@ -13,33 +13,27 @@ dependencies = [
     "akshare>=1.16.0",
     "adata>=1.0.0",
     "tushare>=1.4.0",
-
     # === Storage ===
     "duckdb>=1.0.0",
     "pyarrow>=17.0.0",
-
     # === Core Engine ===
     "akquant>=0.1.0",
-
     # === Analysis & Computation ===
     "pandas>=2.2.0",
     "numpy>=1.26.0",
     "scipy>=1.13.0",
     "optuna>=4.0.0",
-
     # === Fast Scanning (optional but recommended) ===
     "vectorbt>=0.26.0",
-
     # === Visualization & Dashboard ===
     "streamlit>=1.38.0",
     "plotly>=5.22.0",
-
     # === Ops: Scheduling & Logging ===
     "apscheduler>=3.10.0",
     "loguru>=0.7.0",
-
     # === Notifications (DingTalk webhook) ===
     "requests>=2.32.0",
+    "baostock>=0.9.3",
 ]
 
 [dependency-groups]
