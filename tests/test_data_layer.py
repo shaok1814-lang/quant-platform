@@ -44,7 +44,6 @@ def _toy_bars(n_bars: int = 5) -> pd.DataFrame:
             "close": [10.02 + i * 0.1 for i in range(n_bars)],
             "volume": [1_000_000.0] * n_bars,
             "amount": [10_000_000.0] * n_bars,
-            "turnover": [0.5] * n_bars,
         }
     )
     df.attrs["fetcher"] = "akshare"

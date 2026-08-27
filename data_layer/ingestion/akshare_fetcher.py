@@ -22,6 +22,7 @@ from typing import Final, Literal
 
 import akshare as ak
 import pandas as pd
+from loguru import logger
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -53,10 +54,9 @@ CORE_COLUMNS: Final = (
     "close",
     "volume",
     "amount",
-    "turnover",
 )
 
-OPTIONAL_COLUMNS: Final = ("outstanding_share",)
+OPTIONAL_COLUMNS: Final = ("turnover", "outstanding_share")
 
 STANDARD_COLUMNS: Final = CORE_COLUMNS + OPTIONAL_COLUMNS
 
@@ -171,3 +171,72 @@ def fetch_daily_bars(
     df.attrs["fetched_at"] = datetime.now(UTC).isoformat()
 
     return df
+
+
+# ---------------------------------------------------------------------------
+# Fallback strategy
+# ---------------------------------------------------------------------------
+
+
+def fetch_daily_bars_with_fallback(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    *,
+    adjust: AdjustMode = ADJUST_QFQ,
+) -> pd.DataFrame:
+    """Try akshare first; on any FetcherError fall back to baostock.
+
+    The returned DataFrame's ``df.attrs['fetcher']`` reflects whichever
+    source actually succeeded, so downstream validation can decide
+    whether to run a cross-source diff or accept the result as-is.
+
+    Why fallback lives here and not in callers: today, akshare's
+    ``stock_zh_a_hist`` is intermittently blocked by the Windows
+    system proxy (``requests.exceptions.ProxyError``) while AKQuant's
+    httpx-based channel and baostock both work. Centralising the
+    fallback in this layer means every research / backtest entry
+    point picks up the resilience without having to import the
+    secondary fetcher directly.
+
+    Date format: pass ``YYYY-MM-DD`` (ISO). The function converts to
+    ``YYYYMMDD`` for akshare internally and passes ISO through to
+    baostock. ``YYYYMMDD`` is also accepted for backwards compatibility
+    with callers that pass akshare-native format.
+    """
+    # Normalise to ISO. akshare-fetcher accepts YYYYMMDD natively;
+    # baostock needs YYYY-MM-DD.
+    from data_layer.ingestion.baostock_fetcher import (
+        fetch_daily_bars as baostock_fetch,
+    )
+
+    iso_start = start_date.replace("-", "") if "-" in start_date else start_date
+    iso_end = end_date.replace("-", "") if "-" in end_date else end_date
+
+    try:
+        return fetch_daily_bars(
+            symbol, iso_start, iso_end, adjust=adjust
+        )
+    except Exception as e:
+        # akshare internals can raise requests.exceptions.ProxyError
+        # (Windows system-proxy block), JSON decode errors, or our own
+        # FetcherError. Any of these trigger the fallback to baostock.
+        logger.warning(
+            "akshare fetch failed for {sym} ({start}-{end}): {err}; "
+            "falling back to baostock",
+            sym=symbol, start=start_date, end=end_date, err=str(e),
+        )
+
+    iso_start_dash = (
+        f"{iso_start[0:4]}-{iso_start[4:6]}-{iso_start[6:8]}"
+        if "-" not in start_date
+        else start_date
+    )
+    iso_end_dash = (
+        f"{iso_end[0:4]}-{iso_end[4:6]}-{iso_end[6:8]}"
+        if "-" not in end_date
+        else end_date
+    )
+    return baostock_fetch(
+        symbol, iso_start_dash, iso_end_dash, adjust=adjust
+    )

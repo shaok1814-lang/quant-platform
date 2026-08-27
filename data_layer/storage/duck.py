@@ -38,13 +38,16 @@ _TABLE_COLUMNS: Final = (
     "close",
     "volume",
     "amount",
-    "turnover",
     "outstanding_share",
     "fetcher",
     "adjust",
     "fetched_at",
 )
 
+# ``turnover`` was originally in the schema but akshare 1.18 dropped
+# it intermittently and baostock never returned it. v2 schema
+# demotes turnover to application-level derivation (volume /
+# outstanding_share) so the table stays narrow and stable.
 _DDL: Final = """
 CREATE TABLE IF NOT EXISTS daily_bars (
     symbol            VARCHAR  NOT NULL,
@@ -55,7 +58,6 @@ CREATE TABLE IF NOT EXISTS daily_bars (
     close             DOUBLE,
     volume            DOUBLE,
     amount            DOUBLE,
-    turnover          DOUBLE,
     outstanding_share DOUBLE,
     fetcher           VARCHAR,
     adjust            VARCHAR,
@@ -155,7 +157,6 @@ class DuckStore:
                 close = excluded.close,
                 volume = excluded.volume,
                 amount = excluded.amount,
-                turnover = excluded.turnover,
                 outstanding_share = excluded.outstanding_share,
                 fetcher = excluded.fetcher,
                 adjust = excluded.adjust,
