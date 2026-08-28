@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Final
 
+import pandas as pd
+
 from research.factor_lib._types import BarsDF, FactorSeries
 
 # CORE_COLUMNS_FACTOR mirrors
@@ -49,6 +51,11 @@ def validate_input_bars(
 ) -> None:
     """Validate that ``df`` carries the canonical OHLCV columns.
 
+    Accepts ``date`` in either a column or the index (DatetimeIndex
+    / MultiIndex whose first level is named ``"date"``). The
+    MultiIndex case lets pipeline consumers pre-set ``(date,
+    symbol)`` without losing the canonical date column.
+
     Args:
         df: Candidate bars DataFrame.
         require_outstanding: If True, additionally require
@@ -63,7 +70,19 @@ def validate_input_bars(
     required: tuple[str, ...] = CORE_COLUMNS_FACTOR
     if require_outstanding:
         required = (*required, "outstanding_share")
+    has_date_in_index = (
+        isinstance(df.index, pd.DatetimeIndex)
+        or (
+            isinstance(df.index, pd.MultiIndex)
+            and len(df.index.names) > 0
+            and df.index.names[0] == "date"
+        )
+    )
     present = set(df.columns)
+    if has_date_in_index and "date" not in present:
+        # Treat ``date`` as covered by the index so the MultiIndex
+        # pipeline path doesn't trigger a false-positive.
+        present = {*present, "date"}
     missing = [c for c in required if c not in present]
     if missing:
         suffix = " (+ outstanding_share)" if require_outstanding else ""

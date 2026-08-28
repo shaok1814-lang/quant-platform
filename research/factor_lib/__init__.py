@@ -47,6 +47,10 @@ from research.factor_lib.base import (
 from research.factor_lib.liquidity import turnover_ratio
 from research.factor_lib.mean_reversion import bollinger_z, rsi
 from research.factor_lib.momentum import n_day_return
+from research.factor_lib.pipeline import (
+    LONG_FORMAT_COLUMNS,
+    FactorPipeline,
+)
 from research.factor_lib.post import (
     Neutralizer,
     PassThroughNeutralizer,
@@ -54,13 +58,17 @@ from research.factor_lib.post import (
     standardize,
     winsorize,
 )
+from research.factor_lib.splits import SplitSpec, time_split, walk_forward_splits
 from research.factor_lib.trend import ma_deviation
 
 __all__ = [
     "CORE_COLUMNS_FACTOR",
+    "LONG_FORMAT_COLUMNS",
+    "FactorPipeline",
     "MissingColumnError",
     "Neutralizer",
     "PassThroughNeutralizer",
+    "SplitSpec",
     "WinsorMethod",
     "bollinger_z",
     "compute_factor",
@@ -68,7 +76,9 @@ __all__ = [
     "n_day_return",
     "rsi",
     "standardize",
+    "time_split",
     "turnover_ratio",
     "validate_input_bars",
+    "walk_forward_splits",
     "winsorize",
 ]
