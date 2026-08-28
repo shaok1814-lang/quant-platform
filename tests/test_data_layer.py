@@ -74,9 +74,7 @@ def test_fetch_daily_bars_raises_on_empty(monkeypatch: pytest.MonkeyPatch) -> No
     def _fake_empty(*_args: Any, **_kwargs: Any) -> pd.DataFrame:
         return pd.DataFrame()
 
-    monkeypatch.setattr(
-        "akshare.stock_zh_a_hist", _fake_empty, raising=True
-    )
+    monkeypatch.setattr("akshare.stock_zh_a_hist", _fake_empty, raising=True)
     with pytest.raises(FetcherError, match="no rows"):
         fetch_daily_bars("000001", "20240101", "20240110")
 

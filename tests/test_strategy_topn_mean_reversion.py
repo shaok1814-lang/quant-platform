@@ -147,9 +147,7 @@ def test_strategy_class_is_subclass_of_akquant_strategy() -> None:
     """``TopNMeanReversionStrategy`` extends ``akquant.Strategy``
     (verified by class-name string match so the test does not
     depend on AKQuant's runtime types being importable)."""
-    bases = [
-        b.__name__ for b in TopNMeanReversionStrategy.__mro__
-    ]
+    bases = [b.__name__ for b in TopNMeanReversionStrategy.__mro__]
     assert "Strategy" in bases
 
 

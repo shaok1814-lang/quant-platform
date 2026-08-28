@@ -59,9 +59,9 @@ STAMP_TAX_RATE: Final[float] = 0.001
 LOT_SIZE: Final[int] = 100
 TARGET_PERCENT: Final[float] = 0.95  # leave 5% cash buffer for fees / tax
 
-LONG_THRESHOLD: Final[float] = 0.0     # require positive momentum to open
+LONG_THRESHOLD: Final[float] = 0.0  # require positive momentum to open
 SHORT_THRESHOLD: Final[float] = -0.05  # deep negative → flatten without
-                                       # waiting for the slow cross
+# waiting for the slow cross
 
 HISTORY_DEPTH: Final[int] = max(SLOW_WINDOW, FACTOR_WINDOW) + 2
 
@@ -146,9 +146,7 @@ class FactorTimingMACross(akquant.Strategy):  # type: ignore[misc]
 
         self.record_indicator("fast_ma", float(fast_now), symbol=bar.symbol)
         self.record_indicator("slow_ma", float(slow_now), symbol=bar.symbol)
-        self.record_indicator(
-            f"nret_{FACTOR_WINDOW}", float(nret_now), symbol=bar.symbol
-        )
+        self.record_indicator(f"nret_{FACTOR_WINDOW}", float(nret_now), symbol=bar.symbol)
 
         pos_size = self.position.size
 
@@ -167,8 +165,7 @@ class FactorTimingMACross(akquant.Strategy):  # type: ignore[misc]
 
         # Death cross OR defensive momentum-stop → flatten.
         if pos_size > 0 and (
-            (fast_prev >= slow_prev and fast_now < slow_now)
-            or float(nret_now) < SHORT_THRESHOLD
+            (fast_prev >= slow_prev and fast_now < slow_now) or float(nret_now) < SHORT_THRESHOLD
         ):
             self.order_target_percent(
                 symbol=bar.symbol,
@@ -206,9 +203,7 @@ def run_demo(
         from data_layer.storage.duck import DuckStore
 
         with DuckStore(duckdb_path) as store:
-            df = store.query_daily_bars(
-                SYMBOL, start_date=start_date, end_date=end_date
-            )
+            df = store.query_daily_bars(SYMBOL, start_date=start_date, end_date=end_date)
         if df.empty:
             raise RuntimeError(
                 f"No bars returned from DuckDB at {duckdb_path} for {SYMBOL} "
@@ -217,9 +212,7 @@ def run_demo(
     else:
         from akquant import fetch_akshare_symbol
 
-        logger.info(
-            "fetching {sym} {start} -> {end}", sym=SYMBOL, start=start_date, end=end_date
-        )
+        logger.info("fetching {sym} {start} -> {end}", sym=SYMBOL, start=start_date, end=end_date)
         # akshare uses YYYYMMDD; convert ISO if needed.
         ak_start = start_date.replace("-", "")
         ak_end = end_date.replace("-", "")

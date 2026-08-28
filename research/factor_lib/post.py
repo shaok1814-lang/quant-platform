@@ -118,8 +118,7 @@ def winsorize(
             return s.copy()
         return s.clip(lower=lower, upper=upper)
     raise ValueError(
-        f"Unknown winsorize method: {method!r}. "
-        f"Expected one of '3sigma', 'mad', 'quantile'."
+        f"Unknown winsorize method: {method!r}. Expected one of '3sigma', 'mad', 'quantile'."
     )
 
 

@@ -76,14 +76,10 @@ def run_duckdb_demo() -> object:
     DUCKDB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with DuckStore(DUCKDB_PATH) as store:
         store.upsert_daily_bars(df)
-        out = store.query_daily_bars(
-            SYMBOL, start_date=START_DATE_ISO, end_date=END_DATE_ISO
-        )
+        out = store.query_daily_bars(SYMBOL, start_date=START_DATE_ISO, end_date=END_DATE_ISO)
     logger.info("read {n} bars from DuckDB", n=len(out))
     if len(out) != len(df):
-        logger.warning(
-            "row count mismatch: akshare={a} duckdb={d}", a=len(df), d=len(out)
-        )
+        logger.warning("row count mismatch: akshare={a} duckdb={d}", a=len(df), d=len(out))
 
     result = run_backtest(
         data=out,
@@ -103,8 +99,10 @@ def run_duckdb_demo() -> object:
             ),
             instruments_config=[
                 InstrumentConfig(
-                    symbol=SYMBOL, asset_type="STOCK",
-                    tick_size=0.01, lot_size=LOT_SIZE,
+                    symbol=SYMBOL,
+                    asset_type="STOCK",
+                    tick_size=0.01,
+                    lot_size=LOT_SIZE,
                 ),
             ],
             china_stock=ChinaStockConfig(enforce_tick_size=True),
@@ -117,7 +115,8 @@ def run_duckdb_demo() -> object:
         "MA-cross (DuckDB): bars={n} trades={nt} total_ret={ret:.2f}% "
         "sharpe={sh:.3f} sortino={so:.3f} mdd={dd:.2%} win_rate={wr:.2f}% "
         "profit_factor={pf:.2f} exposure={ex:.2f}% max_lev={ml:.2f}",
-        n=len(out), nt=len(result.trades_df),
+        n=len(out),
+        nt=len(result.trades_df),
         ret=_row(metrics, "total_return_pct"),
         sh=_row(metrics, "sharpe_ratio"),
         so=_row(metrics, "sortino_ratio"),

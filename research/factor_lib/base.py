@@ -70,13 +70,10 @@ def validate_input_bars(
     required: tuple[str, ...] = CORE_COLUMNS_FACTOR
     if require_outstanding:
         required = (*required, "outstanding_share")
-    has_date_in_index = (
-        isinstance(df.index, pd.DatetimeIndex)
-        or (
-            isinstance(df.index, pd.MultiIndex)
-            and len(df.index.names) > 0
-            and df.index.names[0] == "date"
-        )
+    has_date_in_index = isinstance(df.index, pd.DatetimeIndex) or (
+        isinstance(df.index, pd.MultiIndex)
+        and len(df.index.names) > 0
+        and df.index.names[0] == "date"
     )
     present = set(df.columns)
     if has_date_in_index and "date" not in present:

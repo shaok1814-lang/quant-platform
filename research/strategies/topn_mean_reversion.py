@@ -24,9 +24,9 @@ from datetime import date
 from pathlib import Path
 from typing import Final
 
+import akquant
 import numpy as np
 import pandas as pd
-import akquant
 from akquant import ChinaStockConfig, run_backtest
 from akquant.backtest.result import BacktestResult
 from akquant.config import (

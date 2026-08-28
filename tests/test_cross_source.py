@@ -58,9 +58,7 @@ def test_diff_inner_join_drops_non_overlapping_dates() -> None:
     # Inner join should produce zero rows.
     a = _make_bars([10.0, 11.0, 12.0], fetcher="akshare")
     b_dates = pd.bdate_range(end=pd.Timestamp("2024-02-05"), periods=3)
-    b = pd.DataFrame(
-        {"date": b_dates, "close": [10.0, 11.0, 12.0]}
-    )
+    b = pd.DataFrame({"date": b_dates, "close": [10.0, 11.0, 12.0]})
     b.attrs["fetcher"] = "baostock"
     diffs = diff_sources(a, b)
     assert len(diffs) == 0
@@ -102,9 +100,7 @@ def test_validate_empty_overlap_returns_zeroed_report() -> None:
     a = _make_bars([10.0, 11.0], fetcher="akshare")
     # Build b with no overlapping date — start 10 years later.
     b_dates = pd.bdate_range(start=pd.Timestamp("2034-01-01"), periods=2)
-    b = pd.DataFrame(
-        {"date": b_dates, "close": [10.0, 11.0]}
-    )
+    b = pd.DataFrame({"date": b_dates, "close": [10.0, 11.0]})
     b.attrs["fetcher"] = "baostock"
     report = validate(a, b)
     assert report.n_overlap == 0
@@ -132,12 +128,8 @@ def test_validate_echoes_fetcher_labels() -> None:
 )
 def test_cross_source_smoke_000001() -> None:
     """Validate akshare (via fallback) vs baostock on 000001.SZ."""
-    df_a = fetch_daily_bars_with_fallback(
-        "000001", "2026-08-20", "2026-08-26", adjust=ADJUST_QFQ
-    )
-    df_b = fetch_daily_bars(
-        "000001", "2026-08-20", "2026-08-26", adjust="qfq"
-    )
+    df_a = fetch_daily_bars_with_fallback("000001", "2026-08-20", "2026-08-26", adjust=ADJUST_QFQ)
+    df_b = fetch_daily_bars("000001", "2026-08-20", "2026-08-26", adjust="qfq")
     report = validate(df_a, df_b, threshold_bps=50.0)
     # Sanity: should overlap, with very small bps (qfq rounding).
     assert report.n_overlap >= 3

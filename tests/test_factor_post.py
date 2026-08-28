@@ -225,9 +225,9 @@ def test_neutralizer_protocol_accepts_subclass() -> None:
             group_col: str,
         ) -> pd.DataFrame:
             out = df_wide.copy()
-            out[factor_col] = (
-                df_wide[factor_col] - df_wide.groupby(group_col)[factor_col].transform("mean")
-            )
+            out[factor_col] = df_wide[factor_col] - df_wide.groupby(group_col)[
+                factor_col
+            ].transform("mean")
             return out
 
     # Static duck-type check: assignable to the Protocol-typed var.

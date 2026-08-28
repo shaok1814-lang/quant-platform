@@ -36,9 +36,7 @@ def _two_symbol_universe() -> pd.DataFrame:
     """Build a 60-bar two-symbol multi-index frame for pipeline tests."""
     sym_a = make_bars([10.0 + i * 0.05 for i in range(60)], symbol="000001")
     sym_b = make_bars([20.0 + i * 0.05 for i in range(60)], symbol="600000")
-    merged = pd.concat(
-        [_df_with_multiindex(sym_a, "000001"), _df_with_multiindex(sym_b, "600000")]
-    )
+    merged = pd.concat([_df_with_multiindex(sym_a, "000001"), _df_with_multiindex(sym_b, "600000")])
     return merged
 
 
