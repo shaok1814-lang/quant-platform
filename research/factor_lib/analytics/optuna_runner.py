@@ -111,11 +111,17 @@ def optimize_params(
         kwargs: dict[str, Any] = dict(base_params)
         for param_name, bounds in search_space.items():
             kwargs[param_name] = _build_suggest_fn(trial, param_name, bounds)
+        # W5.1-C4: spread ``kwargs`` as top-level args (NOT
+        # ``strategy_kwargs=kwargs``) so AKQuant's
+        # ``_split_strategy_kwargs`` routes each entry to
+        # ``self.params.<name>``. ``strategy_kwargs`` is NOT
+        # auto-unwrapped by the engine (only ``strategy_params``
+        # and top-level kwargs are).
         result = runner(
             data=data,
             strategy=strategy_cls,
-            strategy_kwargs=kwargs,
             **base_kwargs,
+            **kwargs,
         )
         return float(result.metrics_df.loc[metric, "value"])
 

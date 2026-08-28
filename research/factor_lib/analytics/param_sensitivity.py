@@ -98,12 +98,16 @@ def param_sensitivity_scan(
 
     out_rows: list[dict[str, Any]] = []
     for v in param_values:
+        # W5.1-C4: spread strategy params as top-level kwargs (NOT
+        # ``strategy_kwargs=...``) so AKQuant's
+        # ``_split_strategy_kwargs`` routes each entry to
+        # ``self.params.<name>``.
         kwargs = {**base_params, param_name: v, **extra_params}
         result = runner(
             data=data,
             strategy=strategy_cls,
-            strategy_kwargs=kwargs,
             **base_kwargs,
+            **kwargs,
         )
         m = float(result.metrics_df.loc[metric, "value"])
         out_rows.append({param_name: v, metric: m})

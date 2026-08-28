@@ -42,7 +42,7 @@ def _stub_runner_factory(
     """
 
     def runner(
-        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
+        *, data: object, strategy: object, **kwargs: Any
     ) -> Any:
         class _R:
             @property
@@ -78,7 +78,7 @@ def _stub_runner_with_is_oos(*, train_sharpe: float, test_sharpe: float) -> Any:
     counter = {"n": 0}
 
     def runner(
-        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
+        *, data: object, strategy: object, **kwargs: Any
     ) -> Any:
         counter["n"] += 1
         # First call: train; second call: test. Per-fold.

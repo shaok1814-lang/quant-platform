@@ -28,10 +28,8 @@ def _stub_runner_for_optuna(surface: dict[float, float]) -> Any:
     which still works for direction assertions but is misleading).
     """
 
-    def runner(
-        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
-    ) -> Any:
-        v = strategy_kwargs.get("top_n", 5)
+    def runner(*, data: object, strategy: object, **kwargs: Any) -> Any:
+        v = kwargs.get("top_n", 5)
         sharpe = surface.get(v, 0.0)
 
         class _R:

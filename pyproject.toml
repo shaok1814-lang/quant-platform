@@ -109,6 +109,7 @@ addopts = [
 markers = [
     "ashare: A-share rule layer tests (W4 backtest/a_share/*).",
     "network: tests that hit akshare / external network (skipped by default; opt in with -m network).",
+    "slow: tests that take > 1s (e.g. real-AKQuant walk-forward e2e). Skipped by default; opt in with -m slow.",
 ]
 
 # === Coverage ===

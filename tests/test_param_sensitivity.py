@@ -38,12 +38,16 @@ class _StubResult:
 def _stub_runner_factory(metric_to_value: dict[float, float]) -> Any:
     """Build a ``backtest_runner`` that maps each param value to a
     stub result. ``metric_to_value[v]`` is the simulated Sharpe
-    for the trial where ``param=v``."""
+    for the trial where ``param=v``.
 
-    def runner(
-        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
-    ) -> _StubResult:
-        v = strategy_kwargs["top_n"]
+    W5.1-C4: the runner takes ``**kwargs`` (NOT a dedicated
+    ``strategy_kwargs=...`` kwarg) because W5.1 spreads strategy
+    params as top-level kwargs to AKQuant. ``top_n`` is extracted
+    from the kwargs dict.
+    """
+
+    def runner(*, data: object, strategy: object, **kwargs: Any) -> _StubResult:
+        v = kwargs.get("top_n", 5)
         sharpe = metric_to_value.get(v, 0.0)
         return _StubResult(metrics={"sharpe_ratio": sharpe})
 
@@ -90,15 +94,14 @@ def test_param_sensitivity_scan_returns_dataframe_with_correct_columns() -> None
 
 
 def test_param_sensitivity_scan_passes_base_params_to_runner() -> None:
-    """``base_params`` are merged into ``strategy_kwargs`` for every
+    """``base_params`` are merged into top-level kwargs for every
     sweep point (the ``param_name`` value is the only thing that
-    changes)."""
+    changes). W5.1-C4: ``strategy_kwargs=...`` is no longer used
+    by the W5 walker — strategy params flow as top-level kwargs."""
     received: list[dict[str, Any]] = []
 
-    def runner(
-        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
-    ) -> _StubResult:
-        received.append(dict(strategy_kwargs))
+    def runner(*, data: object, strategy: object, **kwargs: Any) -> _StubResult:
+        received.append(dict(kwargs))
         return _StubResult(metrics={"sharpe_ratio": 1.0})
 
     param_sensitivity_scan(
@@ -120,10 +123,8 @@ def test_param_sensitivity_scan_passes_base_params_to_runner() -> None:
 def test_param_sensitivity_scan_other_params_merged() -> None:
     received: list[dict[str, Any]] = []
 
-    def runner(
-        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
-    ) -> _StubResult:
-        received.append(dict(strategy_kwargs))
+    def runner(*, data: object, strategy: object, **kwargs: Any) -> _StubResult:
+        received.append(dict(kwargs))
         return _StubResult(metrics={"sharpe_ratio": 1.0})
 
     param_sensitivity_scan(
@@ -144,10 +145,11 @@ def test_param_sensitivity_scan_forwards_data_and_run_kwargs() -> None:
     received_data: list[object] = []
     received_extra: list[dict[str, Any]] = []
 
-    def runner(
-        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
-    ) -> _StubResult:
+    def runner(*, data: object, strategy: object, **kwargs: Any) -> _StubResult:
         received_data.append(data)
+        # ``run_backtest_kwargs`` (initial_cash, show_progress) are
+        # mixed into the runner's kwargs via the W5 walker's
+        # ``runner(**base_kwargs, **kwargs)`` spread.
         received_extra.append(kwargs)
         return _StubResult(metrics={"sharpe_ratio": 1.0})
 

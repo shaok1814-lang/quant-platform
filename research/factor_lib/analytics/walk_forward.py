@@ -225,20 +225,26 @@ def run_walk_forward(
             best_params = dict(base_params)
 
         # 2. Train backtest (IS).
+        # W5.1-C4: pass strategy params as top-level kwargs (NOT
+        # ``strategy_kwargs=best_params``) because AKQuant's engine
+        # only unwraps ``strategy_params=...`` and top-level kwargs.
+        # Using top-level kwargs here is the simplest path that
+        # ``_split_strategy_kwargs`` routes to ``self.params``.
         train_result = runner(
             data=train_df,
             strategy=strategy_cls,
-            strategy_kwargs=best_params,
             **base_kwargs,
+            **best_params,
         )
         train_metrics = summarize_metrics(train_result, phase="is")
 
-        # 3. Test backtest (OOS).
+        # 3. Test backtest (OOS) — same params as IS so the OOS
+        # metric reflects the strategy the IS pass actually chose.
         test_result = runner(
             data=test_df,
             strategy=strategy_cls,
-            strategy_kwargs=best_params,
             **base_kwargs,
+            **best_params,
         )
         test_metrics = summarize_metrics(test_result, phase="oos")
 
