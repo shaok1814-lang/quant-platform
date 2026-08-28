@@ -1,4 +1,5 @@
-"""Top-N mean-reversion cross-section strategy on AKQuant (W3.2-C2).
+"""Top-N mean-reversion cross-section strategy on AKQuant (W3.2-C2,
+refactored W5.1 to expose tunable params via AKQuant ParamSpec).
 
 Picks the N symbols whose RSI + Bollinger z signal the strongest
 "oversold" reading (low RSI = mean-reversion trigger from below;
@@ -14,6 +15,24 @@ delisted universe, strict lot enforcement, sell-only stamp tax) is
 owned by P1 W4 and is NOT implemented here. ``ChinaStockConfig``
 below only enables ``tick_size`` enforcement, identical to the
 MA-cross template.
+
+W5.1 ParamSpec notes:
+  * Tunable params (IntParam inline fields): ``top_n``,
+    ``rsi_window``, ``boll_window``, ``rebalance_weekday``.
+    W5 callers tune per fold via
+    ``run_backtest(strategy_params={"top_n": 5}, ...)`` or
+    top-level kwargs (``run_backtest(..., top_n=5, ...)``).
+  * Runtime-only constants (NOT ParamSpec): ``INITIAL_CASH``,
+    ``COMMISSION_RATE``, ``STAMP_TAX_RATE``, ``LOT_SIZE`` (passed
+    to ``run_backtest`` and ``InstrumentConfig``); ``SYMBOLS`` /
+    ``DEFAULT_SYMBOLS`` (universe selection).
+  * Derived: ``WINDOW = max(RSI_WINDOW, BOLL_WINDOW)`` and
+    ``HISTORY_DEPTH = WINDOW + 5``. Kept module-level ``Final``
+    (deriving them from ParamSpec defaults at class-body
+    evaluation is brittle — optuna may tune RSI_WINDOW without
+    re-deriving WINDOW, which would silently break the warm-up
+    window). W5+ can promote to a pydantic model_validator if
+    needed.
 """
 
 from __future__ import annotations
@@ -35,6 +54,7 @@ from akquant.config import (
     RiskConfig,
     StrategyConfig,
 )
+from akquant.params import IntParam
 from loguru import logger
 
 # ---------------------------------------------------------------------------
@@ -47,7 +67,13 @@ STAMP_TAX_RATE: Final[float] = 0.001
 LOT_SIZE: Final[int] = 100
 TARGET_PERCENT: Final[float] = 0.95
 
-# Strategy-specific.
+# Strategy-specific defaults. These are also the IntParam defaults
+# below; module-level ``Final`` is kept so ``ma_cross_duckdb.py`` and
+# the existing W3 tests can keep importing them by name (the AKQuant
+# ``__init_subclass__`` deletes ParamSpec descriptors from the
+# class namespace, so the *class* attribute ``strategy.top_n`` is
+# not available — only ``strategy.params.top_n`` is, plus the
+# module-level fallback here).
 RSI_WINDOW: Final[int] = 14
 BOLL_WINDOW: Final[int] = 20
 WINDOW: Final[int] = max(RSI_WINDOW, BOLL_WINDOW)
@@ -98,28 +124,47 @@ __all__ = [
 class TopNMeanReversionStrategy(akquant.Strategy):
     """Top-N oversold mean-reversion, weekly equal-weight rebalance.
 
+    Tunable parameters (W5 walk-forward / optuna):
+      * ``top_n`` (int, default 10) — number of oversold symbols
+        to long each rebalance.
+      * ``rsi_window`` (int, default 14) — Wilder RSI lookback.
+      * ``boll_window`` (int, default 20) — Bollinger z lookback.
+      * ``rebalance_weekday`` (int, default 0) — Monday=0, ..., Sun=6.
+
+    Runtime-only (not a strategy param, set on ``run_backtest``):
+      ``initial_cash``, ``commission_rate``, ``stamp_tax_rate``,
+      ``lot_size``, ``t_plus_one``, ``history_depth``,
+      ``warmup_period``, ``symbols``.
+
     On each Monday's ``on_cross_section``:
 
       1. For every universe symbol, fetch the last ``WINDOW + 1``
          bars of close via ``get_history``.
-      2. Compute Wilder RSI (window=14) and Bollinger z (window=20).
+      2. Compute Wilder RSI (window=``self.params.rsi_window``) and
+         Bollinger z (window=``self.params.boll_window``).
       3. Combine: ``score = -(0.5 * (rsi - 50) + 0.5 * z)`` so the
          MOST oversold names (low RSI, negative z) get the HIGHEST
          score.
-      4. ``rebalance_to_topn(scores, top_n=TOP_N, weight_mode=
-         "equal", long_only=True, liquidate_unmentioned=True)``
+      4. ``rebalance_to_topn(scores, top_n=self.params.top_n, ...)``
          equal-weights the top N.
 
     Symbols with insufficient history or NaN factors are skipped
     (so a new listing doesn't tank the cross-section rank for a
     week).
-
-    Note on ``on_cross_section`` vs ``on_bar``:
-        ``on_cross_section`` is the framework-managed hook that
-        guarantees all symbols have today's bar available; we use
-        it here so the cross-section rank is computed once per
-        day (not once per symbol per bar).
     """
+
+    # Inline ParamSpec fields. AKQuant's ``__init_subclass__`` collects
+    # these into a frozen pydantic ``ParamModel`` accessible via
+    # ``self.params.<name>`` (the class attribute is ``delattr``'d).
+    # W5 callers tune per fold via
+    # ``run_backtest(strategy_params={"top_n": 5, ...}, ...)``.
+    # ``# type: ignore[assignment]`` because mypy doesn't see the
+    # ``__init_subclass__`` magic that converts the ParamSpec to an
+    # instance attribute.
+    top_n: int = IntParam(TOP_N)  # type: ignore[assignment]
+    rsi_window: int = IntParam(RSI_WINDOW)  # type: ignore[assignment]
+    boll_window: int = IntParam(BOLL_WINDOW)  # type: ignore[assignment]
+    rebalance_weekday: int = IntParam(REBALANCE_WEEKDAY)  # type: ignore[assignment]
 
     def on_start(self) -> None:
         try:
@@ -127,11 +172,14 @@ class TopNMeanReversionStrategy(akquant.Strategy):
         except AttributeError:
             restored = False
         _ = restored  # placeholder; no session-state init needed yet
+        # HISTORY_DEPTH stays module-level (derived from RSI/BOLL
+        # defaults). W5.1 keeps WINDOW / HISTORY_DEPTH Final for
+        # backward compatibility; see module docstring.
         self.set_history_depth(HISTORY_DEPTH)
 
     def on_cross_section(self, trading_date: date, timestamp: int) -> None:
-        # Weekly gate: only rebalance on Mondays.
-        if trading_date.weekday() != REBALANCE_WEEKDAY:
+        # Weekly gate: only rebalance on the configured day.
+        if trading_date.weekday() != self.params.rebalance_weekday:
             return
 
         scores: dict[str, float] = {}
@@ -144,8 +192,8 @@ class TopNMeanReversionStrategy(akquant.Strategy):
             if close_arr is None or len(close_arr) < WINDOW + 1:
                 continue
             close_series = pd.Series(np.asarray(close_arr, dtype=float))
-            rsi_series = rsi(close_series, window=RSI_WINDOW)
-            z_series = bollinger_z(close_series, window=BOLL_WINDOW)
+            rsi_series = rsi(close_series, window=self.params.rsi_window)
+            z_series = bollinger_z(close_series, window=self.params.boll_window)
             rsi_last = rsi_series.iloc[-1]
             z_last = z_series.iloc[-1]
             if pd.isna(rsi_last) or pd.isna(z_last):
@@ -158,7 +206,7 @@ class TopNMeanReversionStrategy(akquant.Strategy):
             return
         self.rebalance_to_topn(
             scores=scores,
-            top_n=min(TOP_N, len(scores)),
+            top_n=min(self.params.top_n, len(scores)),
             weight_mode="equal",
             long_only=True,
             liquidate_unmentioned=True,
@@ -187,6 +235,10 @@ def run_demo(
     end_date: str | None = None,
 ) -> BacktestResult:
     """Run the TopN mean-reversion strategy end-to-end.
+
+    Uses module-level ``TOP_N`` / ``RSI_WINDOW`` / ``BOLL_WINDOW``
+    as the run-time defaults; W5 callers tune per fold via
+    ``run_walk_forward(strategy_params={"top_n": 5, ...}, ...)``.
 
     Args:
         duckdb_path: DuckDB file to read bars from. Defaults to the
