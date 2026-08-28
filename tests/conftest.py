@@ -145,4 +145,91 @@ def make_multi_symbol_universe(
     }
 
 
-__all__ = ["make_bars", "make_multi_symbol_universe"]
+# ---------------------------------------------------------------------------
+# W4 OHLCV helpers for A-share rule tests
+# ---------------------------------------------------------------------------
+
+
+def make_limit_up_bars() -> pd.DataFrame:
+    """5-bar synthetic OHLCV with bar 2 sitting exactly on the upper limit.
+
+    Bar 0: close=10.00 (normal).
+    Bar 1: close=10.50 (normal).
+    Bar 2: close=11.00 (= round(10*1.10, 2), main board upper limit).
+    Bars 3-4: normal trading at 11.50, 12.00.
+
+    Used by ``tests/test_a_share_rules.py::test_limit_up_blocks_buy``.
+    """
+    dates = pd.bdate_range(end=pd.Timestamp("2024-01-12"), periods=5)
+    closes = [10.00, 10.50, 11.00, 11.50, 12.00]
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": [c + 0.01 for c in closes],
+            "low": [c - 0.01 for c in closes],
+            "close": closes,
+            "volume": [1_000_000.0] * 5,
+        }
+    )
+
+
+def make_suspension_bars() -> pd.DataFrame:
+    """5-bar synthetic OHLCV with bar 2 suspended (volume=0 + flat-line).
+
+    Bar 0: normal close=10.00, volume=1M.
+    Bar 1: normal close=10.50, volume=1M.
+    Bar 2: close=10.50 (unchanged), volume=0, high=low=10.50 → SUSPENDED.
+    Bars 3-4: normal close=11.00, 11.50, volume=1M.
+
+    Used by ``tests/test_a_share_rules.py::test_suspension_no_fill``.
+    """
+    dates = pd.bdate_range(end=pd.Timestamp("2024-01-12"), periods=5)
+    closes = [10.00, 10.50, 10.50, 11.00, 11.50]
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": [10.05, 10.55, 10.50, 11.05, 11.55],
+            "low": [9.95, 9.95, 10.50, 9.95, 9.95],
+            "close": closes,
+            "volume": [1_000_000.0, 1_000_000.0, 0.0, 1_000_000.0, 1_000_000.0],
+        }
+    )
+
+
+def make_ex_dividend_bars() -> pd.DataFrame:
+    """4-bar synthetic OHLCV with a 5% dividend at bar 2 (qfq-adjusted).
+
+    Bar 0: close_raw=10.00, adj_factor=1.0 → qfq close=10.00.
+    Bar 1: close_raw=10.00, adj_factor=1.0 → qfq close=10.00.
+    Bar 2: close_raw=10.00, adj_factor=0.95 → qfq close=9.50.
+    Bar 3: close_raw=10.00, adj_factor=0.95 → qfq close=9.50.
+
+    Used by ``tests/test_a_share_rules.py::test_ex_dividend_adjustment``.
+    The strategy / detector checks the adj_factor jump at bar 2 and
+    verifies the close-to-close return * adj_factor ratio is the
+    flat-line invariant.
+    """
+    dates = pd.bdate_range(end=pd.Timestamp("2024-01-11"), periods=4)
+    closes = [10.00, 10.00, 9.50, 9.50]
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": [c + 0.01 for c in closes],
+            "low": [c - 0.01 for c in closes],
+            "close": closes,
+            "volume": [1_000_000.0] * 4,
+            "adj_factor": [1.0, 1.0, 0.95, 0.95],
+        }
+    )
+
+
+__all__ = [
+    "make_bars",
+    "make_ex_dividend_bars",
+    "make_limit_up_bars",
+    "make_multi_symbol_universe",
+    "make_suspension_bars",
+]
