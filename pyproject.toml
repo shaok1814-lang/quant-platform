@@ -104,6 +104,12 @@ addopts = [
     "--strict-markers",
     "--tb=short",
 ]
+# Registered markers (kept in sync with @pytest.mark.<x> usages).
+# Adding a new marker without registering here breaks --strict-markers.
+markers = [
+    "ashare: A-share rule layer tests (W4 backtest/a_share/*).",
+    "network: tests that hit akshare / external network (skipped by default; opt in with -m network).",
+]
 
 # === Coverage ===
 [tool.coverage.run]
