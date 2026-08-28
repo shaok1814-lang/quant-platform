@@ -122,9 +122,7 @@ def test_run_walk_forward_returns_walk_forward_result(tmp_path: Any) -> None:
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.8
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
     )
     assert isinstance(result, WalkForwardResult)
     assert len(result.folds) >= 2
@@ -144,9 +142,7 @@ def test_run_walk_forward_each_fold_has_is_oos_metrics(tmp_path: Any) -> None:
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.8
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
     )
     for f in result.folds:
         assert f.train_metrics["phase"] == "is"
@@ -173,9 +169,7 @@ def test_run_walk_forward_is_to_oos_decay_last_fold(tmp_path: Any) -> None:
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.8
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
     )
     assert result.is_to_oos_decay["sharpe_ratio_ratio"] == pytest.approx(0.8)
 
@@ -192,9 +186,7 @@ def test_run_walk_forward_decay_within_claudemd_threshold(tmp_path: Any) -> None
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.75
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.75),
     )
     ratio = result.is_to_oos_decay["sharpe_ratio_ratio"]
     # 0.75 ≥ 0.70 → passes CLAUDE.md invariant.
@@ -214,9 +206,7 @@ def test_run_walk_forward_decay_violation_detectable(tmp_path: Any) -> None:
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.5
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.5),
     )
     ratio = result.is_to_oos_decay["sharpe_ratio_ratio"]
     assert ratio < 0.70  # would fail the CLAUDE.md assertion
@@ -242,9 +232,7 @@ def test_run_walk_forward_optuna_trials_zero_uses_base_params(
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.8
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
     )
     for f in result.folds:
         assert f.best_params == base
@@ -268,9 +256,7 @@ def test_run_walk_forward_optuna_trials_positive_runs_per_fold(
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.8
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
     )
     # Every fold's best_params must include 'top_n' (the optuna
     # search space param) AND 'lot_size' (the base param).
@@ -296,9 +282,7 @@ def test_run_walk_forward_optuna_without_search_space_raises(
             train_months=24,
             test_months=12,
             step_months=12,
-            backtest_runner=_stub_runner_with_is_oos(
-                train_sharpe=1.0, test_sharpe=0.8
-            ),
+            backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
         )
 
 
@@ -317,9 +301,7 @@ def test_run_walk_forward_single_dataframe(tmp_path: Any) -> None:
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.8
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
     )
     assert len(result.folds) >= 2
 
@@ -327,8 +309,12 @@ def test_run_walk_forward_single_dataframe(tmp_path: Any) -> None:
 def test_run_walk_forward_multi_symbol_dict(tmp_path: Any) -> None:
     """Multi-symbol dict input is auto-concatenated to a single timeline
     and sliced by date. Per-fold IS / OOS metrics are still emitted."""
-    sym_a = make_bars([10.0 + i * 0.01 for i in range(72 * 21)], start="2018-01-01", symbol="000001")
-    sym_b = make_bars([20.0 + i * 0.01 for i in range(72 * 21)], start="2018-01-01", symbol="600000")
+    sym_a = make_bars(
+        [10.0 + i * 0.01 for i in range(72 * 21)], start="2018-01-01", symbol="000001"
+    )
+    sym_b = make_bars(
+        [20.0 + i * 0.01 for i in range(72 * 21)], start="2018-01-01", symbol="600000"
+    )
     result = run_walk_forward(
         object,
         data={"000001": sym_a, "600000": sym_b},
@@ -336,9 +322,7 @@ def test_run_walk_forward_multi_symbol_dict(tmp_path: Any) -> None:
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.0, test_sharpe=0.8
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.0, test_sharpe=0.8),
     )
     assert len(result.folds) >= 2
     # The per-fold runner received a multi-symbol frame.
@@ -392,9 +376,7 @@ def test_run_walk_forward_e2e_smoke(tmp_path: Any) -> None:
         train_months=24,
         test_months=12,
         step_months=12,
-        backtest_runner=_stub_runner_with_is_oos(
-            train_sharpe=1.10, test_sharpe=0.92
-        ),
+        backtest_runner=_stub_runner_with_is_oos(train_sharpe=1.10, test_sharpe=0.92),
     )
     # Multiple folds.
     assert len(result.folds) >= 3

@@ -215,9 +215,7 @@ def run_walk_forward(
                 # ``optimize_params`` types ``search_space`` as
                 # ``dict[str, tuple]``; we accept ``Mapping`` here so
                 # callers can pass any Mapping impl.
-                search_space=cast(
-                    dict[str, tuple[float, float]], dict(optuna_search_space)
-                ),
+                search_space=cast(dict[str, tuple[float, float]], dict(optuna_search_space)),
                 n_trials=optuna_trials,
                 metric=metric,
                 run_backtest_kwargs=base_kwargs,

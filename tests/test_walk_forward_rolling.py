@@ -31,9 +31,7 @@ def test_walk_forward_splits_returns_multiple_folds_on_long_data() -> None:
     boundaries, so the assertion is calendar-robust (>= 3).
     """
     bars = _make_bars(72 * 21, start="2018-01-01")  # ~6 years
-    splits = walk_forward_splits(
-        bars, train_months=24, test_months=12, step_months=12
-    )
+    splits = walk_forward_splits(bars, train_months=24, test_months=12, step_months=12)
     assert len(splits) >= 3
     assert len(splits) <= 20  # safety cap
 
@@ -49,19 +47,15 @@ def test_walk_forward_splits_fold_dates_are_monotonic() -> None:
     The non-overlap invariant is on the TEST windows.
     """
     bars = _make_bars(72 * 21, start="2018-01-01")
-    splits = walk_forward_splits(
-        bars, train_months=24, test_months=12, step_months=12
-    )
+    splits = walk_forward_splits(bars, train_months=24, test_months=12, step_months=12)
     assert len(splits) >= 2
     for i in range(len(splits) - 1):
         _train_df_i, test_df_i = splits[i]
         _train_df_next, test_df_next = splits[i + 1]
         test_end_i = pd.Timestamp(pd.to_datetime(test_df_i["date"]).max())
-        test_start_next = pd.Timestamp(
-            pd.to_datetime(test_df_next["date"]).min()
-        )
+        test_start_next = pd.Timestamp(pd.to_datetime(test_df_next["date"]).min())
         assert test_end_i < test_start_next, (
-            f"Fold {i} test_end ({test_end_i}) overlaps fold {i+1} "
+            f"Fold {i} test_end ({test_end_i}) overlaps fold {i + 1} "
             f"test_start ({test_start_next}) — test windows must not "
             f"overlap (anti-leakage invariant)."
         )
@@ -70,9 +64,7 @@ def test_walk_forward_splits_fold_dates_are_monotonic() -> None:
 def test_walk_forward_splits_respects_train_months_window() -> None:
     """Each fold's train window spans approximately train_months months."""
     bars = _make_bars(60 * 21, start="2018-01-01")
-    splits = walk_forward_splits(
-        bars, train_months=24, test_months=12, step_months=12
-    )
+    splits = walk_forward_splits(bars, train_months=24, test_months=12, step_months=12)
     assert splits  # non-empty
     train_df, _ = splits[0]
     span = (
@@ -86,15 +78,11 @@ def test_walk_forward_splits_respects_train_months_window() -> None:
 def test_walk_forward_splits_respects_step_months() -> None:
     """Consecutive folds' train-start differ by approximately step_months."""
     bars = _make_bars(60 * 21, start="2018-01-01")
-    splits = walk_forward_splits(
-        bars, train_months=12, test_months=12, step_months=12
-    )
+    splits = walk_forward_splits(bars, train_months=12, test_months=12, step_months=12)
     assert len(splits) >= 2
     for i in range(len(splits) - 1):
         train_i = pd.Timestamp(pd.to_datetime(splits[i][0]["date"]).min())
-        train_next = pd.Timestamp(
-            pd.to_datetime(splits[i + 1][0]["date"]).min()
-        )
+        train_next = pd.Timestamp(pd.to_datetime(splits[i + 1][0]["date"]).min())
         diff_days = (train_next - train_i).days
         # step_months=12 ≈ 365 days; allow 360-370.
         assert 360 <= diff_days <= 370
@@ -103,9 +91,7 @@ def test_walk_forward_splits_respects_step_months() -> None:
 def test_walk_forward_splits_first_fold_uses_data_start() -> None:
     """Fold 0's train starts at the first row's date (no warmup data wasted)."""
     bars = _make_bars(60 * 21, start="2018-06-15")
-    splits = walk_forward_splits(
-        bars, train_months=12, test_months=12, step_months=12
-    )
+    splits = walk_forward_splits(bars, train_months=12, test_months=12, step_months=12)
     assert splits
     first_train_start = pd.Timestamp(pd.to_datetime(splits[0][0]["date"]).min())
     assert first_train_start == pd.Timestamp("2018-06-15")
@@ -146,25 +132,19 @@ def test_walk_forward_splits_step_gt_test_ok() -> None:
 
 def test_walk_forward_splits_empty_returns_empty_list() -> None:
     bars = _make_bars(0)
-    assert walk_forward_splits(
-        bars, train_months=24, test_months=12, step_months=12
-    ) == []
+    assert walk_forward_splits(bars, train_months=24, test_months=12, step_months=12) == []
 
 
 def test_walk_forward_splits_missing_date_raises() -> None:
     bars = pd.DataFrame({"foo": [1, 2, 3]})
     with pytest.raises(KeyError, match="date"):
-        walk_forward_splits(
-            bars, train_months=24, test_months=12, step_months=12
-        )
+        walk_forward_splits(bars, train_months=24, test_months=12, step_months=12)
 
 
 def test_walk_forward_splits_too_short_returns_empty() -> None:
     """Less than train_months+test_months of data → no folds fit."""
     bars = _make_bars(6 * 21, start="2024-01-01")  # ~6 months
-    splits = walk_forward_splits(
-        bars, train_months=24, test_months=12, step_months=12
-    )
+    splits = walk_forward_splits(bars, train_months=24, test_months=12, step_months=12)
     assert splits == []
 
 
@@ -177,9 +157,7 @@ def test_walk_forward_splits_returns_copies_not_views() -> None:
     """Each (train_df, test_df) is a copy — caller mutation does not leak
     back into the source ``df``."""
     bars = _make_bars(60 * 21, start="2018-01-01")
-    splits = walk_forward_splits(
-        bars, train_months=24, test_months=12, step_months=12
-    )
+    splits = walk_forward_splits(bars, train_months=24, test_months=12, step_months=12)
     assert splits
     train_df, _ = splits[0]
     n_before = len(train_df)
@@ -187,9 +165,7 @@ def test_walk_forward_splits_returns_copies_not_views() -> None:
     # The source ``bars`` must not have the column.
     assert "__mutated__" not in bars.columns
     # Re-running the iterator must not pick up the mutation either.
-    splits2 = walk_forward_splits(
-        bars, train_months=24, test_months=12, step_months=12
-    )
+    splits2 = walk_forward_splits(bars, train_months=24, test_months=12, step_months=12)
     assert splits2
     train2, _ = splits2[0]
     assert "__mutated__" not in train2.columns

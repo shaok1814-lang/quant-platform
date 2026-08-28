@@ -95,7 +95,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-class TopNMeanReversionStrategy(akquant.Strategy):  # type: ignore[misc]
+class TopNMeanReversionStrategy(akquant.Strategy):
     """Top-N oversold mean-reversion, weekly equal-weight rebalance.
 
     On each Monday's ``on_cross_section``:

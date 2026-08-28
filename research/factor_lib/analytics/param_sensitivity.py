@@ -135,18 +135,12 @@ def assert_stable(
         ValueError: if ``metric`` is not a column in ``scan_df``.
     """
     if metric not in scan_df.columns:
-        raise ValueError(
-            f"scan_df must have a {metric!r} column; columns={list(scan_df.columns)}"
-        )
+        raise ValueError(f"scan_df must have a {metric!r} column; columns={list(scan_df.columns)}")
     if not (0.0 <= tolerance_pct <= 1.0):
-        raise ValueError(
-            f"tolerance_pct must be in [0, 1], got {tolerance_pct}"
-        )
+        raise ValueError(f"tolerance_pct must be in [0, 1], got {tolerance_pct}")
     lower = (1.0 - tolerance_pct) * base_metric_value
     upper = (1.0 + tolerance_pct) * base_metric_value
-    violations = scan_df[
-        (scan_df[metric] < lower) | (scan_df[metric] > upper)
-    ]
+    violations = scan_df[(scan_df[metric] < lower) | (scan_df[metric] > upper)]
     if not violations.empty:
         msg_lines = [
             f"CLAUDE.md param-stability invariant violated: "

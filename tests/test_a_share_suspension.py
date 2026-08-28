@@ -23,8 +23,22 @@ def test_volume_zero_flags_suspended() -> None:
     """A bar with volume=0 is inferred-suspended (no trades)."""
     bars = _bars(
         [
-            {"date": "2024-01-08", "open": 10.0, "high": 10.05, "low": 9.95, "close": 10.0, "volume": 1_000_000},
-            {"date": "2024-01-09", "open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0, "volume": 0},
+            {
+                "date": "2024-01-08",
+                "open": 10.0,
+                "high": 10.05,
+                "low": 9.95,
+                "close": 10.0,
+                "volume": 1_000_000,
+            },
+            {
+                "date": "2024-01-09",
+                "open": 10.0,
+                "high": 10.0,
+                "low": 10.0,
+                "close": 10.0,
+                "volume": 0,
+            },
         ]
     )
     out = infer_suspension_from_ohlcv(bars)
@@ -36,7 +50,14 @@ def test_volume_zero_with_high_low_above_below() -> None:
     practice but the heuristic should be volume-first)."""
     bars = _bars(
         [
-            {"date": "2024-01-08", "open": 10.0, "high": 12.0, "low": 9.0, "close": 10.5, "volume": 0},
+            {
+                "date": "2024-01-08",
+                "open": 10.0,
+                "high": 12.0,
+                "low": 9.0,
+                "close": 10.5,
+                "volume": 0,
+            },
         ]
     )
     out = infer_suspension_from_ohlcv(bars)
@@ -53,9 +74,30 @@ def test_single_flat_bar_is_not_suspended() -> None:
     it's a thin-trade day, not suspension."""
     bars = _bars(
         [
-            {"date": "2024-01-08", "open": 10.0, "high": 10.5, "low": 10.0, "close": 10.3, "volume": 1_000_000},
-            {"date": "2024-01-09", "open": 10.3, "high": 10.3, "low": 10.3, "close": 10.3, "volume": 500_000},
-            {"date": "2024-01-10", "open": 10.3, "high": 10.6, "low": 10.4, "close": 10.5, "volume": 800_000},
+            {
+                "date": "2024-01-08",
+                "open": 10.0,
+                "high": 10.5,
+                "low": 10.0,
+                "close": 10.3,
+                "volume": 1_000_000,
+            },
+            {
+                "date": "2024-01-09",
+                "open": 10.3,
+                "high": 10.3,
+                "low": 10.3,
+                "close": 10.3,
+                "volume": 500_000,
+            },
+            {
+                "date": "2024-01-10",
+                "open": 10.3,
+                "high": 10.6,
+                "low": 10.4,
+                "close": 10.5,
+                "volume": 800_000,
+            },
         ]
     )
     out = infer_suspension_from_ohlcv(bars)
@@ -66,10 +108,38 @@ def test_two_consecutive_flat_bars_flag_suspended() -> None:
     """Two consecutive flat bars at the same price → both flagged."""
     bars = _bars(
         [
-            {"date": "2024-01-08", "open": 10.0, "high": 10.5, "low": 10.0, "close": 10.5, "volume": 1_000_000},
-            {"date": "2024-01-09", "open": 10.5, "high": 10.5, "low": 10.5, "close": 10.5, "volume": 800_000},
-            {"date": "2024-01-10", "open": 10.5, "high": 10.5, "low": 10.5, "close": 10.5, "volume": 900_000},
-            {"date": "2024-01-11", "open": 10.5, "high": 11.0, "low": 10.5, "close": 11.0, "volume": 1_000_000},
+            {
+                "date": "2024-01-08",
+                "open": 10.0,
+                "high": 10.5,
+                "low": 10.0,
+                "close": 10.5,
+                "volume": 1_000_000,
+            },
+            {
+                "date": "2024-01-09",
+                "open": 10.5,
+                "high": 10.5,
+                "low": 10.5,
+                "close": 10.5,
+                "volume": 800_000,
+            },
+            {
+                "date": "2024-01-10",
+                "open": 10.5,
+                "high": 10.5,
+                "low": 10.5,
+                "close": 10.5,
+                "volume": 900_000,
+            },
+            {
+                "date": "2024-01-11",
+                "open": 10.5,
+                "high": 11.0,
+                "low": 10.5,
+                "close": 11.0,
+                "volume": 1_000_000,
+            },
         ]
     )
     out = infer_suspension_from_ohlcv(bars)
@@ -83,9 +153,30 @@ def test_three_consecutive_flat_bars_all_flagged() -> None:
     """Three flat bars in a row — all three are flagged."""
     bars = _bars(
         [
-            {"date": "2024-01-08", "open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0, "volume": 500_000},
-            {"date": "2024-01-09", "open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0, "volume": 500_000},
-            {"date": "2024-01-10", "open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0, "volume": 500_000},
+            {
+                "date": "2024-01-08",
+                "open": 10.0,
+                "high": 10.0,
+                "low": 10.0,
+                "close": 10.0,
+                "volume": 500_000,
+            },
+            {
+                "date": "2024-01-09",
+                "open": 10.0,
+                "high": 10.0,
+                "low": 10.0,
+                "close": 10.0,
+                "volume": 500_000,
+            },
+            {
+                "date": "2024-01-10",
+                "open": 10.0,
+                "high": 10.0,
+                "low": 10.0,
+                "close": 10.0,
+                "volume": 500_000,
+            },
         ]
     )
     out = infer_suspension_from_ohlcv(bars)

@@ -187,7 +187,9 @@ def test_oos_decay_per_metric_ratio(stub_is: object, stub_oos_typical: object) -
     assert decay["total_return_pct_ratio"] == pytest.approx(20.0 / 25.0)
 
 
-def test_oos_decay_claudemd_decay_assertion_passes(stub_is: object, stub_oos_typical: object) -> None:
+def test_oos_decay_claudemd_decay_assertion_passes(
+    stub_is: object, stub_oos_typical: object
+) -> None:
     """The W5 decay assertion pattern: higher-is-better metrics >= 0.70,
     lower-is-better metrics <= 1.30."""
     is_metrics = summarize_metrics(stub_is)
@@ -202,8 +204,7 @@ def test_oos_decay_claudemd_decay_assertion_passes(stub_is: object, stub_oos_typ
     # Lower-is-better: max_drawdown, volatility.
     for k in ("max_drawdown", "volatility"):
         assert decay[f"{k}_ratio"] <= 1.30, (
-            f"CLAUDE.md decay invariant violated: {k} OOS/IS = "
-            f"{decay[f'{k}_ratio']:.3f} > 1.30."
+            f"CLAUDE.md decay invariant violated: {k} OOS/IS = {decay[f'{k}_ratio']:.3f} > 1.30."
         )
 
 
@@ -273,7 +274,7 @@ def test_equity_curve_passthrough() -> None:
 
 def test_daily_returns_passthrough() -> None:
     idx = pd.date_range("2024-01-01", periods=5, freq="B")
-    rets = pd.Series([0.0, 0.01, 0.0099, - 0.005, 0.0099], index=idx)
+    rets = pd.Series([0.0, 0.01, 0.0099, -0.005, 0.0099], index=idx)
     stub = _StubResult(metrics={}, returns=rets)
     out = daily_returns(stub)
     pd.testing.assert_series_equal(out, rets)

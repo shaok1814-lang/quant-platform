@@ -164,8 +164,10 @@ def test_opt_in_strategy_runs_e2e(tmp_path: Path) -> None:
             ),
             instruments_config=[
                 InstrumentConfig(
-                    symbol="000001", asset_type="STOCK",
-                    tick_size=0.01, lot_size=100,
+                    symbol="000001",
+                    asset_type="STOCK",
+                    tick_size=0.01,
+                    lot_size=100,
                 )
             ],
             china_stock=ChinaStockConfig(enforce_tick_size=True),
@@ -246,8 +248,10 @@ def test_opt_in_strategy_runs_with_empty_data() -> None:
             ),
             instruments_config=[
                 InstrumentConfig(
-                    symbol="000001", asset_type="STOCK",
-                    tick_size=0.01, lot_size=100,
+                    symbol="000001",
+                    asset_type="STOCK",
+                    tick_size=0.01,
+                    lot_size=100,
                 )
             ],
             china_stock=ChinaStockConfig(enforce_tick_size=True),

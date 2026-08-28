@@ -28,9 +28,12 @@ def _stub_runner_for_optuna(surface: dict[float, float]) -> Any:
     which still works for direction assertions but is misleading).
     """
 
-    def runner(*, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any) -> Any:
+    def runner(
+        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
+    ) -> Any:
         v = strategy_kwargs.get("top_n", 5)
         sharpe = surface.get(v, 0.0)
+
         class _R:
             @property
             def metrics_df(self) -> pd.DataFrame:
@@ -38,6 +41,7 @@ def _stub_runner_for_optuna(surface: dict[float, float]) -> Any:
                     {"value": [sharpe]},
                     index=pd.Index(["sharpe_ratio"]),
                 )
+
         return _R()
 
     return runner
@@ -178,12 +182,22 @@ def test_optimize_params_is_reproducible_with_same_seed() -> None:
     runner_a = _stub_runner_for_optuna(surface)
     runner_b = _stub_runner_for_optuna(surface)
     best_a = optimize_params(
-        object, data=pd.DataFrame(), base_params={},
-        search_space={"top_n": (3, 7)}, n_trials=5, backtest_runner=runner_a, seed=0,
+        object,
+        data=pd.DataFrame(),
+        base_params={},
+        search_space={"top_n": (3, 7)},
+        n_trials=5,
+        backtest_runner=runner_a,
+        seed=0,
     )
     best_b = optimize_params(
-        object, data=pd.DataFrame(), base_params={},
-        search_space={"top_n": (3, 7)}, n_trials=5, backtest_runner=runner_b, seed=0,
+        object,
+        data=pd.DataFrame(),
+        base_params={},
+        search_space={"top_n": (3, 7)},
+        n_trials=5,
+        backtest_runner=runner_b,
+        seed=0,
     )
     assert best_a == best_b
 

@@ -100,7 +100,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-class FactorTimingMACross(akquant.Strategy):  # type: ignore[misc]
+class FactorTimingMACross(akquant.Strategy):
     """MA-cross gated by a momentum factor.
 
     Decision logic per bar:

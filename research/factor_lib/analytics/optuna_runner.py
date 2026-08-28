@@ -37,9 +37,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger("optuna").setLevel(logging.WARNING)
 
 
-def _build_suggest_fn(
-    trial: optuna.Trial, param_name: str, bounds: tuple[float, float]
-) -> Any:
+def _build_suggest_fn(trial: optuna.Trial, param_name: str, bounds: tuple[float, float]) -> Any:
     """Suggest a single ``param_name`` value within ``(low, high)``.
 
     Int vs float is inferred from the bounds type (both ints → int,
@@ -102,9 +100,7 @@ def optimize_params(
     if not search_space:
         raise ValueError("search_space must be non-empty")
     if direction not in ("maximize", "minimize"):
-        raise ValueError(
-            f"direction must be 'maximize' or 'minimize', got {direction!r}"
-        )
+        raise ValueError(f"direction must be 'maximize' or 'minimize', got {direction!r}")
 
     from research.factor_lib.analytics.param_sensitivity import _default_runner
 

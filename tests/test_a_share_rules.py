@@ -100,9 +100,7 @@ class _BuyThenTrySellStrategy(akquant.Strategy):  # type: ignore[misc]
 def _toy_ohlcv(n_bars: int = 5) -> pd.DataFrame:
     """Generate ``n_bars`` strictly-increasing synthetic OHLCV (no network)."""
     dates = pd.bdate_range(end=pd.Timestamp("2024-01-12"), periods=n_bars)
-    closes = pd.Series(
-        [10.0 + i * 0.2 for i in range(n_bars)], dtype=float
-    ).to_numpy()
+    closes = pd.Series([10.0 + i * 0.2 for i in range(n_bars)], dtype=float).to_numpy()
     return pd.DataFrame(
         {
             "date": dates,
@@ -122,9 +120,7 @@ def _toy_ohlcv(n_bars: int = 5) -> pd.DataFrame:
         pytest.param(False, 1, id="t+1=off-same-day-sell-allowed"),
     ],
 )
-def test_t_plus_one_blocks_same_day_sell(
-    t_plus_one: bool, expect_closed_trades: int
-) -> None:
+def test_t_plus_one_blocks_same_day_sell(t_plus_one: bool, expect_closed_trades: int) -> None:
     """AKQuant built-in ``t_plus_one`` enforces T+1."""
     df = _toy_ohlcv(5)
     result = run_backtest(
@@ -262,9 +258,7 @@ class _BuyAndTrySellStrategy(akquant.Strategy):  # type: ignore[misc]
         elif self._bars_seen == 3:
             # Attempt sell on bar 2 — T+1 reject (1-day hold) AND
             # 跌停 guard. Strategy gives up.
-            if is_limit_down(
-                float(bar.close), prev_close, is_st=False, board="main"
-            ):
+            if is_limit_down(float(bar.close), prev_close, is_st=False, board="main"):
                 return
             self.order_target_percent(symbol=bar.symbol, target_percent=0.0)  # type: ignore[attr-defined]
         elif self._bars_seen == 5:
@@ -373,9 +367,7 @@ def test_st_symbol_filter() -> None:
     st_set = {"600519"}
 
     # Default: drop ST.
-    assert filter_st(universe, st_set=st_set) == [
-        "000001", "600000", "000002"
-    ]
+    assert filter_st(universe, st_set=st_set) == ["000001", "600000", "000002"]
 
     # Opt-in: keep ST.
     assert filter_st(universe, st_set=st_set, include_st=True) == universe
@@ -406,9 +398,7 @@ def test_delisted_symbol_inclusion() -> None:
     assert set(universe) == {"000001", "600000", "600001", "000003"}
 
     # Opt-out: survivor-biased (legacy).
-    universe_no_delist = build_universe(
-        active, include_delisted=False, delisted_set=delisted
-    )
+    universe_no_delist = build_universe(active, include_delisted=False, delisted_set=delisted)
     assert universe_no_delist == ["000001", "600000"]
 
     # Empty active + delisted: delisted still appears.
@@ -416,9 +406,7 @@ def test_delisted_symbol_inclusion() -> None:
     assert set(universe_empty) == delisted
 
     # Dedup: a symbol in both active and delisted appears once.
-    universe_dedup = build_universe(
-        ["000001", "600000"], delisted_set={"000001", "999999"}
-    )
+    universe_dedup = build_universe(["000001", "600000"], delisted_set={"000001", "999999"})
     assert universe_dedup.count("000001") == 1
 
     # Without ``delisted_set``, ``fetch_delisted_symbols`` is called
@@ -440,6 +428,7 @@ def test_public_api_imports() -> None:
         Board,
         LimitBounds,
     )
+
     assert AShareRuleChecklist is not None
     assert LimitBounds is not None
     assert Board is not None

@@ -138,15 +138,11 @@ def test_filter_st_calls_fetch_when_st_set_is_none(
     """``st_set=None`` triggers ``fetch_st_symbols`` (lazy network)."""
     called: dict[str, bool] = {"hit": False}
 
-    def fake_fetch(
-        *, offline_csv: Path | None = None, allow_network: bool = True
-    ) -> set[str]:
+    def fake_fetch(*, offline_csv: Path | None = None, allow_network: bool = True) -> set[str]:
         called["hit"] = True
         return {"600519"}
 
-    monkeypatch.setattr(
-        "backtest.a_share.st_filter.fetch_st_symbols", fake_fetch
-    )
+    monkeypatch.setattr("backtest.a_share.st_filter.fetch_st_symbols", fake_fetch)
     out = filter_st(["000001", "600519"], st_set=None)
     assert out == ["000001"]
     assert called["hit"] is True

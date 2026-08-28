@@ -40,7 +40,9 @@ def _stub_runner_factory(metric_to_value: dict[float, float]) -> Any:
     stub result. ``metric_to_value[v]`` is the simulated Sharpe
     for the trial where ``param=v``."""
 
-    def runner(*, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any) -> _StubResult:
+    def runner(
+        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
+    ) -> _StubResult:
         v = strategy_kwargs["top_n"]
         sharpe = metric_to_value.get(v, 0.0)
         return _StubResult(metrics={"sharpe_ratio": sharpe})
@@ -93,7 +95,9 @@ def test_param_sensitivity_scan_passes_base_params_to_runner() -> None:
     changes)."""
     received: list[dict[str, Any]] = []
 
-    def runner(*, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any) -> _StubResult:
+    def runner(
+        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
+    ) -> _StubResult:
         received.append(dict(strategy_kwargs))
         return _StubResult(metrics={"sharpe_ratio": 1.0})
 
@@ -116,7 +120,9 @@ def test_param_sensitivity_scan_passes_base_params_to_runner() -> None:
 def test_param_sensitivity_scan_other_params_merged() -> None:
     received: list[dict[str, Any]] = []
 
-    def runner(*, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any) -> _StubResult:
+    def runner(
+        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
+    ) -> _StubResult:
         received.append(dict(strategy_kwargs))
         return _StubResult(metrics={"sharpe_ratio": 1.0})
 
@@ -138,7 +144,9 @@ def test_param_sensitivity_scan_forwards_data_and_run_kwargs() -> None:
     received_data: list[object] = []
     received_extra: list[dict[str, Any]] = []
 
-    def runner(*, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any) -> _StubResult:
+    def runner(
+        *, data: object, strategy: object, strategy_kwargs: dict[str, Any], **kwargs: Any
+    ) -> _StubResult:
         received_data.append(data)
         received_extra.append(kwargs)
         return _StubResult(metrics={"sharpe_ratio": 1.0})
@@ -196,7 +204,10 @@ def test_assert_stable_lower_is_better_metric_inverts_via_tolerance() -> None:
     the test."""
     df = pd.DataFrame({"x": [1, 2, 3], "max_drawdown": [0.10, 0.11, 0.12]})
     assert_stable(
-        df, base_param=2, base_metric_value=0.10, tolerance_pct=0.20,
+        df,
+        base_param=2,
+        base_metric_value=0.10,
+        tolerance_pct=0.20,
         metric="max_drawdown",
     )
 
@@ -220,7 +231,11 @@ def test_assert_stable_raises_on_both_sides_violation() -> None:
     df = pd.DataFrame({"x": [1, 2, 3], "m": [0.5, 1.0, 1.5]})
     with pytest.raises(AssertionError) as exc_info:
         assert_stable(
-            df, base_param=2, base_metric_value=1.0, tolerance_pct=0.20, metric="m",
+            df,
+            base_param=2,
+            base_metric_value=1.0,
+            tolerance_pct=0.20,
+            metric="m",
         )
     msg = str(exc_info.value)
     # Both 0.5 (below band) and 1.5 (above band) must be reported.
@@ -254,9 +269,9 @@ def test_assert_stable_invalid_tolerance_pct_raises() -> None:
 
 def test_claudemd_param_stability_pattern() -> None:
     """The canonical W5 use case:
-        df = param_sensitivity_scan(...)
-        base_metric = df.loc[df[param] == base, metric].iloc[0]
-        assert_stable(df, base_param=base, base_metric_value=base_metric)
+    df = param_sensitivity_scan(...)
+    base_metric = df.loc[df[param] == base, metric].iloc[0]
+    assert_stable(df, base_param=base, base_metric_value=base_metric)
     """
     # Synthetic "stable" surface: param=5 gives Sharpe=1.0; ±20% gives
     # 0.95, 0.97, 1.02, 0.99 — all within [0.80, 1.20].
@@ -271,6 +286,4 @@ def test_claudemd_param_stability_pattern() -> None:
     )
     base = df.loc[df["top_n"] == 5, "sharpe_ratio"].iloc[0]
     # Should pass: every row's Sharpe within ±20% of 1.00.
-    assert_stable(
-        df, base_param=5, base_metric_value=base, tolerance_pct=0.20
-    )
+    assert_stable(df, base_param=5, base_metric_value=base, tolerance_pct=0.20)
