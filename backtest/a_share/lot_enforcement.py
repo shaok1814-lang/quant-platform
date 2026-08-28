@@ -31,13 +31,9 @@ __all__ = ["enforce_lot", "is_valid_lot"]
 
 def _validate(quantity: int, lot_size: int) -> None:
     if quantity <= 0:
-        raise ValueError(
-            f"quantity must be > 0, got {quantity}"
-        )
+        raise ValueError(f"quantity must be > 0, got {quantity}")
     if lot_size <= 0:
-        raise ValueError(
-            f"lot_size must be > 0, got {lot_size}"
-        )
+        raise ValueError(f"lot_size must be > 0, got {lot_size}")
 
 
 def enforce_lot(quantity: int, *, lot_size: int = DEFAULT_LOT_SIZE) -> int:

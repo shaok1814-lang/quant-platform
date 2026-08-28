@@ -54,6 +54,4 @@ def compute_stamp_tax(
         return 0.0
     if side == "sell":
         return float(rate * notional)
-    raise ValueError(
-        f"side must be 'buy' or 'sell', got {side!r}"
-    )
+    raise ValueError(f"side must be 'buy' or 'sell', got {side!r}")

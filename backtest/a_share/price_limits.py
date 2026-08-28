@@ -100,9 +100,7 @@ def compute_limit_price(
     if prev_close <= 0:
         raise ValueError(f"prev_close must be > 0, got {prev_close}")
     if board not in LIMIT_PCT_BY_BOARD:
-        raise ValueError(
-            f"Unknown board: {board!r}. Expected one of {list(LIMIT_PCT_BY_BOARD)}"
-        )
+        raise ValueError(f"Unknown board: {board!r}. Expected one of {list(LIMIT_PCT_BY_BOARD)}")
     pct = _limit_pct(is_st=is_st, board=board)
     upper = round(prev_close * (1.0 + pct), _QUOTE_PRECISION)
     lower = round(prev_close * (1.0 - pct), _QUOTE_PRECISION)
@@ -141,6 +139,6 @@ def is_at_limit(
     board: Board,
 ) -> bool:
     """``True`` iff ``close`` is exactly on either limit (shortcut)."""
-    return is_limit_up(
+    return is_limit_up(close, prev_close, is_st=is_st, board=board) or is_limit_down(
         close, prev_close, is_st=is_st, board=board
-    ) or is_limit_down(close, prev_close, is_st=is_st, board=board)
+    )

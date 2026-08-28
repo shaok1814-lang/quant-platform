@@ -51,9 +51,7 @@ def _resolve_cols(bars: pd.DataFrame) -> tuple[str, str, str | None, str | None]
         for c in candidates:
             if c is not None and c in cols:
                 return c
-        raise KeyError(
-            f"bars must have one of {candidates}; found columns {sorted(cols)}"
-        )
+        raise KeyError(f"bars must have one of {candidates}; found columns {sorted(cols)}")
 
     close_col = pick("close", "Close", "adj_close", "Adj Close")
     volume_col = pick("volume", "Volume")
@@ -90,10 +88,9 @@ def infer_suspension_from_ohlcv(bars: pd.DataFrame) -> pd.Series:
     # bars (single isolated flat bar = thin-trade day, NOT
     # suspension).
     if high_col is not None and low_col is not None:
-        flat_bar = (
-            bars[high_col].fillna(np.nan).eq(bars[low_col])
-            & bars[high_col].fillna(np.nan).eq(bars[close_col])
-        )
+        flat_bar = bars[high_col].fillna(np.nan).eq(bars[low_col]) & bars[high_col].fillna(
+            np.nan
+        ).eq(bars[close_col])
         run_id = (flat_bar != flat_bar.shift()).cumsum()
         flat_run_length = flat_bar.groupby(run_id).transform("size")
         flat_stretch_long = flat_bar & (flat_run_length >= 2)

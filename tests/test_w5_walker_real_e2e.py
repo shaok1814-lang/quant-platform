@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-
 from research.factor_lib.analytics.walk_forward import run_walk_forward
 from research.strategies.topn_mean_reversion import TopNMeanReversionStrategy
 from tests.conftest import make_bars

@@ -41,9 +41,7 @@ def _stub_runner_factory(
     argument, not the stub's return.
     """
 
-    def runner(
-        *, data: object, strategy: object, **kwargs: Any
-    ) -> Any:
+    def runner(*, data: object, strategy: object, **kwargs: Any) -> Any:
         class _R:
             @property
             def metrics_df(self) -> pd.DataFrame:
@@ -77,9 +75,7 @@ def _stub_runner_with_is_oos(*, train_sharpe: float, test_sharpe: float) -> Any:
 
     counter = {"n": 0}
 
-    def runner(
-        *, data: object, strategy: object, **kwargs: Any
-    ) -> Any:
+    def runner(*, data: object, strategy: object, **kwargs: Any) -> Any:
         counter["n"] += 1
         # First call: train; second call: test. Per-fold.
         sharpe = train_sharpe if counter["n"] % 2 == 1 else test_sharpe

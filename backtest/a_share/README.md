@@ -83,8 +83,8 @@ universe = filter_st(["000001", "600000", "600519"], include_st=False, st_set=st
 ```python
 from backtest.a_share.lot_enforcement import enforce_lot, is_valid_lot
 
-enforce_lot(150)   # 100 (round down)
-enforce_lot(250)   # 200
+enforce_lot(150)  # 100 (round down)
+enforce_lot(250)  # 200
 is_valid_lot(100)  # True
 is_valid_lot(150)  # False
 ```
@@ -96,7 +96,7 @@ AKQuant already enforces lot size at order time (buy-side strict; `close_positio
 ```python
 from backtest.a_share.stamp_tax import compute_stamp_tax
 
-compute_stamp_tax(100_000.0, side="buy")   # 0.0
+compute_stamp_tax(100_000.0, side="buy")  # 0.0
 compute_stamp_tax(100_000.0, side="sell")  # 100.0 (rate=0.001 default)
 ```
 
@@ -107,10 +107,12 @@ AKQuant's `stamp_tax_rate` is already sell-only. This is the pure-function equiv
 ```python
 from backtest.a_share.delisted_universe import fetch_delisted_symbols, build_universe
 
-delisted_set = fetch_delisted_symbols(allow_network=False, offline_csv="data/delisted_a_share_list.csv")
+delisted_set = fetch_delisted_symbols(
+    allow_network=False, offline_csv="data/delisted_a_share_list.csv"
+)
 universe = build_universe(
     ["000001", "600000", "600001"],  # 600001 is delisted
-    include_delisted=True,           # default per CLAUDE.md
+    include_delisted=True,  # default per CLAUDE.md
     delisted_set=delisted_set,
 )
 # All 3 retained; setting include_delisted=False drops 600001 (survivor bias).
@@ -122,6 +124,7 @@ Per CLAUDE.md "每次写新策略前,列出涉及到的规则清单", new strate
 
 ```python
 from backtest.a_share import AShareRuleChecklist
+
 
 class MyStrategy(akquant.Strategy):
     def on_start(self):
