@@ -49,7 +49,7 @@ Implementation note (date / symbol handling):
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import pandas as pd
@@ -116,16 +116,8 @@ class FactorPipeline:
     factors: tuple[tuple[str, Callable[[BarsDF], pd.Series]], ...]
     winsorize_method: WinsorMethod = "3sigma"
     standardize: bool = True
-    neutralizer: Neutralizer | None = None
+    neutralizer: Neutralizer = field(default_factory=PassThroughNeutralizer)
     output_format: OutputFormat = "long"
-
-    def __post_init__(self) -> None:
-        # ``Neutralizer`` is a Protocol — a default value would force
-        # callers to import the class even when they want the default.
-        # Resolve None here so the rest of the code treats it as the
-        # pass-through variant.
-        if self.neutralizer is None:
-            object.__setattr__(self, "neutralizer", PassThroughNeutralizer())
 
     def compute(self, df: BarsDF) -> pd.DataFrame:
         """Run all factors + post-processing on ``df``.
@@ -162,9 +154,7 @@ class FactorPipeline:
         if symbol_keys is not None:
             wide[_SYMBOL_COL] = symbol_keys.values
 
-        factor_only_cols = [
-            c for c in wide.columns if c not in (_DATE_COL, _SYMBOL_COL)
-        ]
+        factor_only_cols = [c for c in wide.columns if c not in (_DATE_COL, _SYMBOL_COL)]
 
         # 3. Cross-section post-processing per date group.
         if date_keys is not None:
