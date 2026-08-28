@@ -37,8 +37,8 @@ import pandas as pd
 __all__ = ["infer_suspension_from_ohlcv"]
 
 
-def _resolve_cols(bars: pd.DataFrame) -> tuple[str, str, str, str | None]:
-    """Find (close, volume, prev_close-source, high/low) column names.
+def _resolve_cols(bars: pd.DataFrame) -> tuple[str, str, str | None, str | None]:
+    """Find (close, volume, high, low) column names.
 
     Falls back to ``Adj Close`` / ``Close`` / ``close``; ``Volume`` /
     ``volume``; ``High`` / ``Low`` / ``high`` / ``low``. Returns the
@@ -47,9 +47,9 @@ def _resolve_cols(bars: pd.DataFrame) -> tuple[str, str, str, str | None]:
     """
     cols = set(bars.columns)
 
-    def pick(*candidates: str) -> str:
+    def pick(*candidates: str | None) -> str:
         for c in candidates:
-            if c in cols:
+            if c is not None and c in cols:
                 return c
         raise KeyError(
             f"bars must have one of {candidates}; found columns {sorted(cols)}"
