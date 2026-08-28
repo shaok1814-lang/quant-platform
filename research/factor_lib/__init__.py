@@ -44,14 +44,17 @@ from research.factor_lib.base import (
     compute_factor,
     validate_input_bars,
 )
+from research.factor_lib.mean_reversion import bollinger_z, rsi
 from research.factor_lib.momentum import n_day_return
 from research.factor_lib.trend import ma_deviation
 
 __all__ = [
     "CORE_COLUMNS_FACTOR",
     "MissingColumnError",
+    "bollinger_z",
     "compute_factor",
     "ma_deviation",
     "n_day_return",
+    "rsi",
     "validate_input_bars",
 ]
