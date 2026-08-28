@@ -18,7 +18,6 @@ from pathlib import Path
 
 import akquant
 import pandas as pd
-import pytest
 from akquant import ChinaStockConfig, run_backtest
 from akquant.config import (
     BacktestConfig,
