@@ -73,6 +73,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from akquant.params import FloatParam, IntParam  # noqa: E402
+
 from research.factor_lib.momentum import n_day_return  # noqa: E402
 
 __all__ = [
@@ -105,17 +107,39 @@ class FactorTimingMACross(akquant.Strategy):
 
     Decision logic per bar:
 
-      * Golden cross AND ``nret > LONG_THRESHOLD`` AND flat → buy
-        near-full equity.
+      * Golden cross AND ``nret > self.params.long_threshold`` AND
+        flat → buy near-full equity.
       * Death cross AND holding → flatten.
-      * Holding AND ``nret < SHORT_THRESHOLD`` → flatten
+      * Holding AND ``nret < self.params.short_threshold`` → flatten
         immediately (defensive override; do not wait for the slow
         cross).
 
-    Indicators ``fast_ma`` / ``slow_ma`` / ``nret_{FACTOR_WINDOW}``
+    Tunable parameters (W5 walk-forward / optuna):
+      * ``fast_window`` (int, default 5) — fast MA lookback.
+      * ``slow_window`` (int, default 20) — slow MA lookback.
+      * ``factor_window`` (int, default 20) — n-day return lookback.
+      * ``long_threshold`` (float, default 0.0) — require positive
+        momentum to open.
+      * ``short_threshold`` (float, default -0.05) — deep negative
+        → flatten without waiting for the slow cross.
+
+    Runtime-only (not a strategy param): ``initial_cash``,
+    ``commission_rate``, ``stamp_tax_rate``, ``lot_size``,
+    ``t_plus_one``, ``history_depth``, ``warmup_period``, ``symbols``.
+
+    Indicators ``fast_ma`` / ``slow_ma`` / ``nret_{factor_window}``
     are recorded every bar so a future dashboard can overlay them
     on the equity curve.
     """
+
+    # Inline ParamSpec fields. AKQuant's ``__init_subclass__`` collects
+    # these into a frozen pydantic ``ParamModel`` accessible via
+    # ``self.params.<name>`` (the class attribute is ``delattr``'d).
+    fast_window: int = IntParam(FAST_WINDOW)  # type: ignore[assignment]
+    slow_window: int = IntParam(SLOW_WINDOW)  # type: ignore[assignment]
+    factor_window: int = IntParam(FACTOR_WINDOW)  # type: ignore[assignment]
+    long_threshold: float = FloatParam(LONG_THRESHOLD)  # type: ignore[assignment]
+    short_threshold: float = FloatParam(SHORT_THRESHOLD)  # type: ignore[assignment]
 
     def on_start(self) -> None:
         try:
@@ -126,27 +150,25 @@ class FactorTimingMACross(akquant.Strategy):
         self.set_history_depth(HISTORY_DEPTH)
 
     def on_bar(self, bar: Bar) -> None:
-        df: pd.DataFrame = self.get_history_df(count=SLOW_WINDOW + 1)
-        if len(df) < SLOW_WINDOW + 1:
+        df: pd.DataFrame = self.get_history_df(count=self.params.slow_window + 1)
+        if len(df) < self.params.slow_window + 1:
             return  # warm-up not full yet
         closes = df["close"]
-        fast_now = closes.rolling(FAST_WINDOW).mean().iloc[-1]
-        slow_now = closes.rolling(SLOW_WINDOW).mean().iloc[-1]
-        fast_prev = closes.rolling(FAST_WINDOW).mean().iloc[-2]
-        slow_prev = closes.rolling(SLOW_WINDOW).mean().iloc[-2]
-        # Momentum factor over FACTOR_WINDOW bars; uses the latest
-        # bar's close in the numerator, so for a defensive
-        # end-of-bar decision the strategy should be run with
-        # close.shift(1) upstream — not done here because the
-        # MA-cross template is consistent with ma_cross.py.
-        nret_series = n_day_return(closes, window=FACTOR_WINDOW)
+        fast_now = closes.rolling(self.params.fast_window).mean().iloc[-1]
+        slow_now = closes.rolling(self.params.slow_window).mean().iloc[-1]
+        fast_prev = closes.rolling(self.params.fast_window).mean().iloc[-2]
+        slow_prev = closes.rolling(self.params.slow_window).mean().iloc[-2]
+        # Momentum factor over ``factor_window`` bars.
+        nret_series = n_day_return(closes, window=self.params.factor_window)
         nret_now = nret_series.iloc[-1]
         if pd.isna(nret_now):
             return
 
         self.record_indicator("fast_ma", float(fast_now), symbol=bar.symbol)
         self.record_indicator("slow_ma", float(slow_now), symbol=bar.symbol)
-        self.record_indicator(f"nret_{FACTOR_WINDOW}", float(nret_now), symbol=bar.symbol)
+        self.record_indicator(
+            f"nret_{self.params.factor_window}", float(nret_now), symbol=bar.symbol
+        )
 
         pos_size = self.position.size
 
@@ -155,7 +177,7 @@ class FactorTimingMACross(akquant.Strategy):
             fast_prev <= slow_prev
             and fast_now > slow_now
             and pos_size == 0
-            and float(nret_now) > LONG_THRESHOLD
+            and float(nret_now) > self.params.long_threshold
         ):
             self.order_target_percent(
                 symbol=bar.symbol,
@@ -165,7 +187,8 @@ class FactorTimingMACross(akquant.Strategy):
 
         # Death cross OR defensive momentum-stop → flatten.
         if pos_size > 0 and (
-            (fast_prev >= slow_prev and fast_now < slow_now) or float(nret_now) < SHORT_THRESHOLD
+            (fast_prev >= slow_prev and fast_now < slow_now)
+            or float(nret_now) < self.params.short_threshold
         ):
             self.order_target_percent(
                 symbol=bar.symbol,
