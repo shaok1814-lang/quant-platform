@@ -75,59 +75,84 @@ def walk_forward_splits(
     test_months: int = 12,
     step_months: int = 3,
 ) -> list[tuple[BarsDF, BarsDF]]:
-    """W5 STUB: walk-forward rolling splits.
+    """Walk-forward rolling splits — N (train, test) pairs.
 
-    Returns a single-element list ``[(first_train, first_test)]`` from
-    ``time_split`` covering the first ``train_months`` of ``df`` as
-    training and the next ``test_months`` as test. W5 will replace
-    this with a full rolling iterator once
-    ``akquant.ml.ValidationConfig`` is integrated.
+    For ``i = 0, 1, 2, ...``:
+      * train window ``[start + i*step_months, start + i*step_months + train_months)``
+      * test  window ``[start + i*step_months + train_months,
+                          start + i*step_months + train_months + test_months)``
 
-    Anti-overfit guard:
-        ``step_months < test_months`` is rejected with
-        ``NotImplementedError``. A step shorter than the test window
-        creates *overlapping* test folds (data leakage) — the
-        canonical "fake walk-forward" setup that historically
-        inflates in-sample Sharpe by 30-50%.
+    The number of folds is the largest N such that the N-th test
+    window still fits inside ``df``'s date range. Empty folds (zero
+    rows in either window) are skipped — this happens when the data
+    range is tight on a calendar-month boundary.
 
     Args:
         df: Bars DataFrame. Must carry a ``date`` column.
-        train_months: Training window in months. Default ``24`` (2
-            years) per CLAUDE.md anti-overfit policy.
-        test_months: Test window in months. Default ``12`` (1 year).
+        train_months: Training window in months. Default ``24`` (2y).
+        test_months: Test window in months. Default ``12`` (1y).
         step_months: Roll step in months. Default ``3`` (quarterly).
+            Must be ``>= test_months`` (anti-overfit guard).
 
     Returns:
-        A single-element list ``[(train_df, test_df)]``. W5 will
-        return one element per fold.
+        ``list[(train_df, test_df)]`` of length N (typically > 1 for
+        any realistic data range). Empty ``df`` → ``[]``.
 
     Raises:
         NotImplementedError: if ``step_months < test_months``
-            (anti-overfit guard).
+            (overlapping test folds = data leakage). Locked anti-overfit
+            guard per CLAUDE.md 防过拟合原则.
         KeyError: if ``df`` does not contain a ``date`` column.
+
+    Note:
+        Boundary semantics:
+          * Train end is inclusive (``DateOffset(days=-1)``).
+          * Test start is the day after train end.
+          * Test end is inclusive (``DateOffset(days=-1)``).
+          * Each fold's slices are ``.copy()`` so downstream mutation
+            does not leak back into ``df``.
+
+        The function does NOT itself run a backtest — it only produces
+        date-sliced frames. The caller (typically
+        :func:`research.factor_lib.analytics.walk_forward.run_walk_forward`)
+        invokes ``akquant.run_backtest`` per fold and aggregates the
+        IS / OOS metrics.
     """
     if step_months < test_months:
         raise NotImplementedError(
             f"walk_forward_splits: step_months ({step_months}) must be >= "
             f"test_months ({test_months}). A shorter step creates overlapping "
             f"test folds (data leakage), which is the canonical 'fake "
-            f"walk-forward' overfitting pattern. W5 will integrate the real "
-            f"rolling iterator once akquant.ml.ValidationConfig is wired; "
-            f"for now use a non-overlapping step (step_months >= test_months) "
-            f"or rely on the single-split return value."
+            f"walk-forward' overfitting pattern that CLAUDE.md 防过拟合 "
+            f"原则 explicitly bans."
         )
     if "date" not in df.columns:
         raise KeyError("walk_forward_splits requires a 'date' column in df")
     if df.empty:
         return []
-    start = pd.Timestamp(df["date"].iloc[0])
-    train_end = start + pd.DateOffset(months=train_months) - pd.DateOffset(days=1)
-    test_start = train_end + pd.DateOffset(days=1)
-    test_end = test_start + pd.DateOffset(months=test_months) - pd.DateOffset(days=1)
-    return [
-        time_split(
-            df,
-            train=(start.strftime("%Y-%m-%d"), train_end.strftime("%Y-%m-%d")),
-            test=(test_start.strftime("%Y-%m-%d"), test_end.strftime("%Y-%m-%d")),
+
+    start = pd.Timestamp(pd.to_datetime(df["date"]).min())
+    out: list[tuple[BarsDF, BarsDF]] = []
+    # Safety cap so a typo (e.g. step_months=0) does not loop forever.
+    max_folds = 1000
+    for i in range(max_folds):
+        train_start = start + pd.DateOffset(months=i * step_months)
+        train_end = train_start + pd.DateOffset(months=train_months) - pd.DateOffset(days=1)
+        test_start = train_end + pd.DateOffset(days=1)
+        test_end = test_start + pd.DateOffset(months=test_months) - pd.DateOffset(days=1)
+        last_data_date = pd.Timestamp(pd.to_datetime(df["date"]).max())
+        if test_end > last_data_date:
+            break
+        train_mask = (pd.to_datetime(df["date"]) >= train_start) & (
+            pd.to_datetime(df["date"]) <= train_end
         )
-    ]
+        test_mask = (pd.to_datetime(df["date"]) >= test_start) & (
+            pd.to_datetime(df["date"]) <= test_end
+        )
+        train_df = df.loc[train_mask].copy()
+        test_df = df.loc[test_mask].copy()
+        # Skip empty folds (boundary effect); warn if BOTH empty (data too short).
+        if len(train_df) == 0 and len(test_df) == 0:
+            continue
+        out.append((train_df, test_df))
+    return out

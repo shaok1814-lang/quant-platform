@@ -263,15 +263,20 @@ def test_time_split_missing_date_raises() -> None:
 # ===========================================================================
 
 
-def test_walk_forward_splits_today_returns_single_split() -> None:
-    """W3 stub returns exactly one (train, test) pair."""
-    df = make_bars([10.0 + i * 0.1 for i in range(800)])
-    # ``step_months >= test_months`` to satisfy the anti-overfit guard.
+def test_walk_forward_splits_returns_rolling_count() -> None:
+    """W5 upgrade: walk_forward_splits is now a true rolling iterator.
+
+    With ~1600 business days (~6.4 years) and step_months=12 the
+    rolling iterator yields ≥ 3 (train, test) folds. (The original
+    W3 assertion of "1 split" no longer holds — the stub has been
+    upgraded to a real iterator.)
+    """
+    df = make_bars([10.0 + i * 0.1 for i in range(1600)])
     splits = walk_forward_splits(df, train_months=24, test_months=12, step_months=12)
-    assert len(splits) == 1
-    train, test = splits[0]
-    assert not train.empty
-    assert not test.empty
+    assert len(splits) >= 3
+    for train, test in splits:
+        assert not train.empty
+        assert not test.empty
 
 
 def test_walk_forward_splits_step_lt_test_raises() -> None:
@@ -284,9 +289,10 @@ def test_walk_forward_splits_step_lt_test_raises() -> None:
 
 def test_walk_forward_splits_step_eq_test_ok() -> None:
     """``step_months == test_months`` (non-overlapping step) is OK."""
-    df = make_bars([10.0 + i * 0.1 for i in range(800)])
+    df = make_bars([10.0 + i * 0.1 for i in range(1600)])
     splits = walk_forward_splits(df, train_months=24, test_months=12, step_months=12)
-    assert len(splits) == 1
+    # True rolling yields ≥ 3 folds for ~6.4 years of data.
+    assert len(splits) >= 3
 
 
 def test_walk_forward_splits_empty_returns_empty_list() -> None:
