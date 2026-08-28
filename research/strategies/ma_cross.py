@@ -27,6 +27,7 @@ from akquant.config import (
     RiskConfig,
     StrategyConfig,
 )
+from akquant.params import IntParam
 from loguru import logger
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,14 @@ HISTORY_DEPTH: Final[int] = SLOW_WINDOW + FAST_WINDOW
 class MACrossStrategy(akquant.Strategy):
     """5/20 simple-MA crossover on a single symbol, near-full-cash allocation.
 
+    Tunable parameters (W5 walk-forward / optuna):
+      * ``fast_window`` (int, default 5) — fast MA lookback.
+      * ``slow_window`` (int, default 20) — slow MA lookback.
+
+    Runtime-only (not a strategy param): ``initial_cash``,
+    ``commission_rate``, ``stamp_tax_rate``, ``lot_size``,
+    ``t_plus_one``, ``history_depth``, ``warmup_period``, ``symbols``.
+
     On every bar:
       * Golden cross (fast crosses above slow, no position) → buy ~95% equity.
       * Death  cross (fast crosses below slow, holding)    → flatten.
@@ -69,6 +78,12 @@ class MACrossStrategy(akquant.Strategy):
       * The two MA values are recorded each bar via ``record_indicator``
         so a future dashboard can overlay them on the equity curve.
     """
+
+    # Inline ParamSpec fields. AKQuant's ``__init_subclass__`` collects
+    # these into a frozen pydantic ``ParamModel`` accessible via
+    # ``self.params.<name>`` (the class attribute is ``delattr``'d).
+    fast_window: int = IntParam(FAST_WINDOW)  # type: ignore[assignment]
+    slow_window: int = IntParam(SLOW_WINDOW)  # type: ignore[assignment]
 
     def on_start(self) -> None:
         # ``is_restored`` exists on Warm Start (run_from_checkpoint).
@@ -88,15 +103,15 @@ class MACrossStrategy(akquant.Strategy):
         # bars, so ``fast_prev``/``slow_prev`` are computed over a
         # shifted-and-short window — golden/death crosses then never
         # match the offline pandas baseline and the strategy stays flat.
-        df: pd.DataFrame = self.get_history_df(count=SLOW_WINDOW + 1)
-        if len(df) < SLOW_WINDOW + 1:
+        df: pd.DataFrame = self.get_history_df(count=self.params.slow_window + 1)
+        if len(df) < self.params.slow_window + 1:
             return  # warm-up not full yet
 
         closes = df["close"]
-        fast_now = closes.rolling(FAST_WINDOW).mean().iloc[-1]
-        slow_now = closes.rolling(SLOW_WINDOW).mean().iloc[-1]
-        fast_prev = closes.rolling(FAST_WINDOW).mean().iloc[-2]
-        slow_prev = closes.rolling(SLOW_WINDOW).mean().iloc[-2]
+        fast_now = closes.rolling(self.params.fast_window).mean().iloc[-1]
+        slow_now = closes.rolling(self.params.slow_window).mean().iloc[-1]
+        fast_prev = closes.rolling(self.params.fast_window).mean().iloc[-2]
+        slow_prev = closes.rolling(self.params.slow_window).mean().iloc[-2]
 
         self.record_indicator("fast_ma", float(fast_now), symbol=bar.symbol)
         self.record_indicator("slow_ma", float(slow_now), symbol=bar.symbol)
