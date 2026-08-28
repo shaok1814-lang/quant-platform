@@ -17,38 +17,12 @@ from data_layer.ingestion.akshare_fetcher import (
 )
 from data_layer.ingestion.baostock_fetcher import fetch_daily_bars
 from data_layer.validation import ValidationReport, diff_sources, validate
+from tests.conftest import make_bars as _make_bars
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_bars(
-    closes: list[float],
-    *,
-    fetcher: str,
-    symbol: str = "000001",
-    start: str = "2024-01-08",
-) -> pd.DataFrame:
-    """Build a minimal bars DataFrame with the given close series."""
-    n = len(closes)
-    dates = pd.bdate_range(end=pd.Timestamp("2024-01-12"), periods=n)
-    df = pd.DataFrame(
-        {
-            "date": dates,
-            "open": closes,
-            "high": [c + 0.05 for c in closes],
-            "low": [c - 0.05 for c in closes],
-            "close": closes,
-            "volume": [1_000_000.0] * n,
-            "amount": [10_000_000.0] * n,
-        }
-    )
-    df.attrs["fetcher"] = fetcher
-    df.attrs["symbol"] = symbol
-    df.attrs["adjust"] = "qfq"
-    df.attrs["fetched_at"] = "2026-08-27T00:00:00+00:00"
-    return df
+# Local alias ``_make_bars`` preserves the historical call-site
+# spelling while the implementation now lives in ``tests/conftest.py``.
+# Tests should NOT call ``_make_bars`` directly outside this file;
+# new code should ``from tests.conftest import make_bars``.
 
 
 # ===========================================================================
