@@ -1,0 +1,60 @@
+# A-share universe for ops/ingest_job.
+#
+# Curated to span sectors with enough liquidity for backtests / paper
+# trading. 30+ symbols as of 2026-08-29. Edit ``ops.scheduler`` or
+# this file directly to extend; ``ops.universe.load_universe`` validates
+# at startup and refuses to schedule a job with a malformed list.
+#
+# Schema (each entry): {symbol, name, sector}.
+#   * ``symbol`` MUST be 6 digits (akshare requirement).
+#   * ``sector`` is a free-form tag, used for grouped diagnostics
+#     (``by_sector`` breakdown in 钉钉 alerts).
+#
+# Sources (2026-08-29):
+#   * Banks: 600000, 601398, 601288, 601939, 600036, 601166, 000001
+#   * Liquor / consumer staples: 600519, 000858, 600887, 600690
+#   * Tech / internet: 002594, 300750, 300059, 600276, 002475
+#   * Healthcare: 600276 (overlap with tech), 000661, 600436
+#   * Industrials / energy: 600028, 601857, 601012, 601628, 600585
+#   * ETFs (broad index proxy): 510300, 510500, 510050, 510880
+#   * Real estate / utilities: 600030, 600900, 600886
+#   * Auto / new energy: 002594 (overlap), 601238, 601633
+universe:
+  - {symbol: "000001", name: "Ping An Bank",         sector: "bank"}
+  - {symbol: "000002", name: "China Vanke A",        sector: "real_estate"}
+  - {symbol: "000333", name: "Midea Group",          sector: "consumer"}
+  - {symbol: "000651", name: "Gree Electric",        sector: "consumer"}
+  - {symbol: "000661", name: "Changchun High-Tech",  sector: "healthcare"}
+  - {symbol: "000858", name: "Wuliangye",            sector: "consumer"}
+  - {symbol: "002475", name: "Luxshare Precision",   sector: "tech"}
+  - {symbol: "002594", name: "BYD",                  sector: "auto"}
+  - {symbol: "300059", name: "East Money",           sector: "finance"}
+  - {symbol: "300750", name: "CATL",                 sector: "new_energy"}
+  - {symbol: "510050", name: "SSE 50 ETF",           sector: "etf"}
+  - {symbol: "510300", name: "CSI 300 ETF",          sector: "etf"}
+  - {symbol: "510500", name: "CSI 500 ETF",          sector: "etf"}
+  - {symbol: "510880", name: "SSE Dividend ETF",     sector: "etf"}
+  - {symbol: "600000", name: "SPD Bank",             sector: "bank"}
+  - {symbol: "600015", name: "Hua Xia Bank",         sector: "bank"}
+  - {symbol: "600016", name: "Minsheng Bank",        sector: "bank"}
+  - {symbol: "600028", name: "Sinopec",              sector: "energy"}
+  - {symbol: "600030", name: "Citic Securities",     sector: "finance"}
+  - {symbol: "600036", name: "CMB",                  sector: "bank"}
+  - {symbol: "600276", name: "Jiangsu Hengrui",      sector: "healthcare"}
+  - {symbol: "600436", name: "Zhangjiang Hi-Tech",   sector: "pharma"}
+  - {symbol: "600519", name: "Kweichow Moutai",      sector: "consumer"}
+  - {symbol: "600585", name: "Anhui Conch Cement",   sector: "industrials"}
+  - {symbol: "600690", name: "Haier Smart Home",     sector: "consumer"}
+  - {symbol: "600886", name: "SDIC Power",           sector: "utilities"}
+  - {symbol: "600887", name: "Inner Mongolia Yili",  sector: "consumer"}
+  - {symbol: "600900", name: "China Yangtze Power",  sector: "utilities"}
+  - {symbol: "601012", name: "Longi Green Energy",   sector: "new_energy"}
+  - {symbol: "601166", name: "Industrial Bank",      sector: "bank"}
+  - {symbol: "601238", name: "GAC Group",            sector: "auto"}
+  - {symbol: "601288", name: "ABC",                  sector: "bank"}
+  - {symbol: "601318", name: "Ping An Insurance",    sector: "finance"}
+  - {symbol: "601398", name: "ICBC",                 sector: "bank"}
+  - {symbol: "601628", name: "China Life",           sector: "finance"}
+  - {symbol: "601633", name: "Great Wall Motor",     sector: "auto"}
+  - {symbol: "601857", name: "PetroChina",           sector: "energy"}
+  - {symbol: "601939", name: "CCB",                  sector: "bank"}
