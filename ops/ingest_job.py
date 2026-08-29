@@ -62,6 +62,7 @@ __all__ = [
     "Fetcher",
     "IngestReport",
     "PerSymbolReport",
+    "ingest_window",
     "run_daily_ingest",
 ]
 
@@ -114,18 +115,24 @@ class PerSymbolReport:
 
 @dataclass(frozen=True)
 class IngestReport:
-    """Aggregate outcome of one ``run_daily_ingest`` invocation.
+    """Aggregate outcome of an ingest invocation.
+
+    Used by both single-day (:func:`run_daily_ingest`, where
+    ``start_date == end_date``) and window (:func:`ingest_window`)
+    flows.
 
     Attributes:
-        target_date: The trading date being ingested (the day the
-            scheduler meant to capture).
+        start_date: Inclusive first trading date in the ingest
+            window. Equals ``end_date`` for ``run_daily_ingest``.
+        end_date: Inclusive last trading date in the ingest window.
         started_at: UTC ISO timestamp when the job started.
         duration_s: Wall-clock duration in seconds.
         per_symbol: One :class:`PerSymbolReport` per universe
             entry, in deterministic (sorted-by-symbol) order.
     """
 
-    target_date: date_cls
+    start_date: date_cls
+    end_date: date_cls
     started_at: str
     duration_s: float
     per_symbol: list[PerSymbolReport] = field(default_factory=list)
@@ -264,7 +271,8 @@ def run_daily_ingest(
 
     duration = time.monotonic() - t0
     report = IngestReport(
-        target_date=target,
+        start_date=target,
+        end_date=target,
         started_at=started.isoformat(),
         duration_s=duration,
         per_symbol=per_symbol,
@@ -283,6 +291,107 @@ def run_daily_ingest(
     if notify_on_hard:
         _notify_hard_failures(report)
     return report
+
+
+def ingest_window(
+    start_date: date_cls,
+    end_date: date_cls,
+    *,
+    duckdb_path: str | Path | None = None,
+    universe_path: str | Path | None = None,
+    fetcher: Fetcher | None = None,
+    notify_on_hard: bool = True,
+) -> IngestReport:
+    """Run the ingest pipeline for an inclusive ``(start, end)`` window.
+
+    Each symbol is fetched ONCE covering the whole window (not
+    once per day), so a 60-day backfill is ~60x faster than 60
+    calls to :func:`run_daily_ingest`.
+
+    The window is inclusive on both ends. ``start_date > end_date``
+    raises ``ValueError``. Window length is unbounded — the caller
+    is responsible for not requesting 10 years of minute data.
+
+    Args:
+        start_date: Inclusive first date.
+        end_date: Inclusive last date.
+        Other kwargs: same as :func:`run_daily_ingest`.
+
+    Returns:
+        :class:`IngestReport` with ``start_date`` / ``end_date``
+        reflecting the requested window.
+    """
+    if start_date > end_date:
+        raise ValueError(f"start_date ({start_date}) > end_date ({end_date})")
+
+    started = datetime.now(UTC)
+    t0 = time.monotonic()
+    universe = load_universe(universe_path)
+    db_path = Path(duckdb_path) if duckdb_path is not None else DEFAULT_DUCKDB_PATH
+    fetch = fetcher if fetcher is not None else _default_fetcher()
+
+    start_str = start_date.strftime("%Y%m%d")
+    end_str = end_date.strftime("%Y%m%d")
+
+    per_symbol: list[PerSymbolReport] = []
+    with DuckStore(db_path) as store:
+        for entry in universe:
+            psr = _ingest_one(
+                entry=entry,
+                start_date=start_str,
+                end_date=end_str,
+                fetch=fetch,
+                store=store,
+            )
+            per_symbol.append(psr)
+
+    duration = time.monotonic() - t0
+    report = IngestReport(
+        start_date=start_date,
+        end_date=end_date,
+        started_at=started.isoformat(),
+        duration_s=duration,
+        per_symbol=per_symbol,
+    )
+    logger.info(
+        "ingest done window={s}..{e} symbols={n} upserted={u} "
+        "hard_quality={hq} fetcher_err={fe} other_err={oe} duration={dur:.2f}s",
+        s=start_date,
+        e=end_date,
+        n=len(per_symbol),
+        u=report.n_upserted,
+        hq=report.n_hard_quality,
+        fe=report.n_fetcher_errors,
+        oe=report.n_other_errors,
+        dur=duration,
+    )
+    if notify_on_hard:
+        _notify_hard_failures_window(report)
+    return report
+
+
+def _notify_hard_failures_window(report: IngestReport) -> None:
+    """Send one 钉聊 alert if any symbol had HARD quality issues
+    during a window ingest. Mirrors :func:`_notify_hard_failures`
+    but the title is start..end instead of a single date."""
+    hard_failures = [r for r in report.per_symbol if r.status == "skipped_hard_quality"]
+    if not hard_failures:
+        return
+    from ops import notify
+
+    lines = [
+        f"window={report.start_date}..{report.end_date}",
+        f"HARD quality failures: {len(hard_failures)} of {len(report.per_symbol)} symbols",
+    ]
+    for r in hard_failures:
+        if r.quality is not None:
+            lines.append(r.quality.to_markdown())
+        elif r.error:
+            lines.append(f"- {r.symbol} ({r.sector}): {r.error}")
+    notify.ding(
+        f"Ingest HARD quality failures ({report.start_date}..{report.end_date})",
+        "\n".join(lines),
+    )
 
 
 def _ingest_one(

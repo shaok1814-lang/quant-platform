@@ -42,7 +42,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from data_layer.storage.duck import DuckStore  # noqa: E402
-from ops.ingest_job import IngestReport, run_daily_ingest  # noqa: E402
+from ops.ingest_job import IngestReport, ingest_window, run_daily_ingest  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -380,3 +380,165 @@ def test_run_daily_ingest_no_notify_when_no_hard(tmp_path: Path) -> None:
         f"ding was called {call_count['n']} times on a clean run; "
         f"healthy days must not send 钉聊 alerts"
     )
+
+
+# ---------------------------------------------------------------------------
+# ingest_window — multi-day (window) mode (W6.1.5 refactor)
+# ---------------------------------------------------------------------------
+
+
+def _good_window_df(n_days: int = 5) -> pd.DataFrame:
+    """n_day synthetic OHLCV with slowly increasing close, distinct dates."""
+    dates = pd.bdate_range(end=pd.Timestamp("2026-01-15"), periods=n_days)
+    closes = [10.00 + 0.10 * i for i in range(n_days)]
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": [c + 0.05 for c in closes],
+            "low": [c - 0.05 for c in closes],
+            "close": closes,
+            "volume": [1_000_000.0] * n_days,
+            "amount": [10_000_000.0] * n_days,
+        }
+    )
+
+
+def test_ingest_window_reports_start_end_dates(tmp_path: Path) -> None:
+    """``IngestReport`` carries the requested start_date / end_date
+    so dashboards can label the window."""
+    db = tmp_path / "test.duckdb"
+    universe = _write_universe(tmp_path, [("000001", "A", "x")])
+    fetcher = _make_fetcher({"000001": _good_window_df(5)})
+
+    report = ingest_window(
+        start_date=date_cls(2026, 1, 9),
+        end_date=date_cls(2026, 1, 15),
+        duckdb_path=db,
+        universe_path=universe,
+        fetcher=fetcher,
+        notify_on_hard=False,
+    )
+
+    assert report.start_date == date_cls(2026, 1, 9)
+    assert report.end_date == date_cls(2026, 1, 15)
+    assert report.n_upserted == 1
+    assert _count_rows(db, "000001") == 5
+
+
+def test_ingest_window_one_call_per_symbol(tmp_path: Path) -> None:
+    """Window mode makes ONE fetcher call per symbol covering the
+    full window. Verifies the speed-up path: 1 call (not 7) for
+    a 7-row response spanning 2026-01-09..2026-01-17."""
+    db = tmp_path / "test.duckdb"
+    universe = _write_universe(tmp_path, [("000001", "A", "x"), ("000002", "B", "y")])
+
+    call_log: list[tuple[str, str, str]] = []
+
+    def _fetch(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        call_log.append((symbol, start_date, end_date))
+        df = _good_window_df(5).copy()
+        df.attrs["symbol"] = symbol
+        df.attrs["fetcher"] = "stub"
+        df.attrs["adjust"] = "qfq"
+        df.attrs["fetched_at"] = "2026-08-29T00:00:00+00:00"
+        return df
+
+    ingest_window(
+        start_date=date_cls(2026, 1, 9),
+        end_date=date_cls(2026, 1, 15),
+        duckdb_path=db,
+        universe_path=universe,
+        fetcher=_fetch,
+        notify_on_hard=False,
+    )
+
+    assert len(call_log) == 2, (
+        f"expected 2 fetcher calls (one per symbol), got {len(call_log)}: {call_log}"
+    )
+    for sym, s, e in call_log:
+        assert s == "20260109"
+        assert e == "20260115"
+
+
+def test_ingest_window_inverted_dates_raises(tmp_path: Path) -> None:
+    """``start_date > end_date`` raises ``ValueError`` before any
+    fetcher call (defends against typos in CLI usage)."""
+    db = tmp_path / "test.duckdb"
+    universe = _write_universe(tmp_path, [("000001", "A", "x")])
+
+    with pytest.raises(ValueError, match="start_date"):
+        ingest_window(
+            start_date=date_cls(2026, 1, 15),
+            end_date=date_cls(2026, 1, 9),
+            duckdb_path=db,
+            universe_path=universe,
+            fetcher=_make_fetcher({}),
+            notify_on_hard=False,
+        )
+
+
+def test_ingest_window_per_symbol_isolation(tmp_path: Path) -> None:
+    """Symbol A ok, symbol B fetcher-error → A upserted, B reported."""
+    db = tmp_path / "test.duckdb"
+    universe = _write_universe(tmp_path, [("000001", "A", "x"), ("000002", "B", "y")])
+    fetcher = _make_fetcher({"000001": _good_window_df(3), "000002": RuntimeError("boom")})
+
+    report = ingest_window(
+        start_date=date_cls(2026, 1, 13),
+        end_date=date_cls(2026, 1, 15),
+        duckdb_path=db,
+        universe_path=universe,
+        fetcher=fetcher,
+        notify_on_hard=False,
+    )
+
+    assert report.n_upserted == 1
+    assert report.n_other_errors == 1
+    assert _count_rows(db, "000001") == 3
+    assert _count_rows(db, "000002") == 0
+
+
+def test_ingest_window_idempotent(tmp_path: Path) -> None:
+    """Re-running for the same window does not duplicate rows
+    (DuckDB upsert overwrites)."""
+    db = tmp_path / "test.duckdb"
+    universe = _write_universe(tmp_path, [("000001", "A", "x")])
+    fetcher = _make_fetcher({"000001": _good_window_df(3)})
+
+    ingest_window(
+        start_date=date_cls(2026, 1, 13),
+        end_date=date_cls(2026, 1, 15),
+        duckdb_path=db,
+        universe_path=universe,
+        fetcher=fetcher,
+        notify_on_hard=False,
+    )
+    ingest_window(
+        start_date=date_cls(2026, 1, 13),
+        end_date=date_cls(2026, 1, 15),
+        duckdb_path=db,
+        universe_path=universe,
+        fetcher=fetcher,
+        notify_on_hard=False,
+    )
+
+    assert _count_rows(db, "000001") == 3
+
+
+def test_run_daily_ingest_report_has_start_eq_end(tmp_path: Path) -> None:
+    """``run_daily_ingest`` (1-day mode) sets ``start_date ==
+    end_date == target`` so dashboards can label uniformly across
+    both flows."""
+    db = tmp_path / "test.duckdb"
+    universe = _write_universe(tmp_path, [("000001", "A", "x")])
+    report = run_daily_ingest(
+        date=date_cls(2024, 9, 2),
+        duckdb_path=db,
+        universe_path=universe,
+        fetcher=_make_fetcher({"000001": _good_df()}),
+        notify_on_hard=False,
+    )
+    assert report.start_date == date_cls(2024, 9, 2)
+    assert report.end_date == date_cls(2024, 9, 2)
+    assert report.start_date == report.end_date
