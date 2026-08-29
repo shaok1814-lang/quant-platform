@@ -148,11 +148,23 @@ class IngestReport:
 
 
 def _default_fetcher() -> Fetcher:
-    """Lazy default fetcher (so tests don't need akshare installed)."""
-    from data_layer.ingestion.akshare_fetcher import fetch_daily_bars
+    """Lazy default fetcher (so tests don't need akshare installed).
+
+    Uses ``fetch_daily_bars_with_fallback`` (W2.2) so akshare
+    direct + baostock fallback is on one path. The W2.1 known
+    issue — Windows netsh winhttp proxy intermittently RST'ing
+    akshare's eastmoney.com TLS connection — is recovered by
+    baostock's separate TCP path. ``df.attrs['fetcher']`` then
+    reflects whichever source actually succeeded (per-symbol
+    failover); downstream validation decides whether to flag
+    a cross-source diff downstream.
+    """
+    from data_layer.ingestion.akshare_fetcher import (
+        fetch_daily_bars_with_fallback,
+    )
 
     def _fetch(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        return fetch_daily_bars(
+        return fetch_daily_bars_with_fallback(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
