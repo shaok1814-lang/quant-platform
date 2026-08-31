@@ -36,6 +36,8 @@ from execution import (  # noqa: E402
     RiskConfig,
     run_paper_session,
 )
+from execution.protocol import EquitySnapshot  # noqa: E402
+from execution.runner import PaperSessionConfig, format_kill_switch_body  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # OHLCV fixture factory (avoids importing tests/conftest to keep this
@@ -307,3 +309,157 @@ def test_runner_uses_journal_as_source_of_truth_for_daily_count(tmp_path: Path) 
     )
     assert report2.n_risk_rejected == 1
     assert report2.n_filled == 0
+
+
+# ---------------------------------------------------------------------------
+# Drawdown kill switch → notify_fn (W7.1 Phase 3)
+# ---------------------------------------------------------------------------
+
+
+def _bars_for_kill_switch(n: int = 4) -> pd.DataFrame:
+    """Build n trivial bars dated today (so daily-traded tests align)."""
+    today = datetime.now(UTC).replace(tzinfo=None, hour=10, minute=0, second=0, microsecond=0)
+    return pd.DataFrame({
+        "date": [today + pd.Timedelta(minutes=i) for i in range(n)],
+        "open": [10.0] * n,
+        "high": [10.5] * n,
+        "low": [9.5] * n,
+        "close": [10.0] * n,
+        "volume": [1_000_000.0] * n,
+    })
+
+
+def test_kill_switch_invokes_notify_fn(tmp_path: Path) -> None:
+    """When kill switch flips 0→1, ``notify_fn(title, body)`` is
+    called exactly once."""
+    bars = _bars_for_kill_switch(n=4)
+    adapter = AkquantPaperAdapter(initial_cash=1_000_000.0)
+    adapter._high_water_mark = 1_060_000.0  # force ~5.66% drawdown
+
+    journal = PaperJournal(tmp_path / "j.sqlite")
+
+    def strategy(s, recent):
+        s.setdefault("n", 0)
+        s["n"] += 1
+        return [OrderIntent(
+            client_order_id=f"c-{s['n']}", symbol="000001",
+            side="buy", quantity=100, price=10.0,
+        )]
+
+    notify_calls: list[tuple[str, str]] = []
+
+    def my_notify(title: str, body: str) -> None:
+        notify_calls.append((title, body))
+
+    risk_cfg = RiskConfig(
+        max_position_pct=1.0,
+        max_daily_trades=10_000,
+        drawdown_kill_switch_pct=0.05,
+    )
+
+    report = run_paper_session(
+        strategy, bars, adapter=adapter, journal=journal,
+        risk_cfg=risk_cfg,
+        session_cfg=PaperSessionConfig(notify_fn=my_notify),
+    )
+    # Exactly one notify at the 0→1 flip.
+    assert len(notify_calls) == 1, (
+        f"expected 1 notify, got {len(notify_calls)}: {notify_calls}"
+    )
+    title, body = notify_calls[0]
+    assert "kill switch" in title.lower()
+    assert "drawdown_pct=" in body
+    assert "5.66%" in body  # 60000 / 1060000 ≈ 5.66%
+    assert "kill_switch_cap=5.00%" in body
+    # Kill switch actually halted new orders.
+    assert report.n_filled == 0
+
+
+def test_kill_switch_no_notify_fn_logs_warning_only(tmp_path: Path) -> None:
+    """With ``notify_fn=None`` (W7.1 default), kill switch still
+    halts the session — operator just sees loguru WARNING, no crash."""
+    bars = _bars_for_kill_switch(n=4)
+    adapter = AkquantPaperAdapter(initial_cash=1_000_000.0)
+    adapter._high_water_mark = 1_060_000.0
+
+    journal = PaperJournal(tmp_path / "j.sqlite")
+
+    def strategy(s, recent):
+        s.setdefault("n", 0)
+        s["n"] += 1
+        return [OrderIntent(
+            client_order_id=f"c-{s['n']}", symbol="000001",
+            side="buy", quantity=100, price=10.0,
+        )]
+
+    risk_cfg = RiskConfig(
+        max_position_pct=1.0,
+        max_daily_trades=10_000,
+        drawdown_kill_switch_pct=0.05,
+    )
+
+    # Default PaperSessionConfig → notify_fn=None. Runner must NOT raise.
+    report = run_paper_session(
+        strategy, bars, adapter=adapter, journal=journal,
+        risk_cfg=risk_cfg,
+    )
+    assert report.n_filled == 0  # still halted
+
+
+def test_notify_fn_exception_does_not_kill_run(tmp_path: Path) -> None:
+    """A broken ``notify_fn`` (钉聊 webhook down) is swallowed.
+
+    The runner completes normally — 钉聊 outages are infra
+    problems, NOT paper-mode crashes.
+    """
+    bars = _bars_for_kill_switch(n=4)
+    adapter = AkquantPaperAdapter(initial_cash=1_000_000.0)
+    adapter._high_water_mark = 1_060_000.0
+
+    journal = PaperJournal(tmp_path / "j.sqlite")
+
+    def strategy(s, recent):
+        s.setdefault("n", 0)
+        s["n"] += 1
+        return [OrderIntent(
+            client_order_id=f"c-{s['n']}", symbol="000001",
+            side="buy", quantity=100, price=10.0,
+        )]
+
+    def bad_notify(title: str, body: str) -> None:
+        raise RuntimeError("钉聊 webhook down")
+
+    risk_cfg = RiskConfig(
+        max_position_pct=1.0,
+        max_daily_trades=10_000,
+        drawdown_kill_switch_pct=0.05,
+    )
+
+    # RuntimeError inside bad_notify must NOT propagate.
+    report = run_paper_session(
+        strategy, bars, adapter=adapter, journal=journal,
+        risk_cfg=risk_cfg,
+        session_cfg=PaperSessionConfig(notify_fn=bad_notify),
+    )
+    # Kill switch still activated (notify_fn exception does NOT
+    # change the safety behavior).
+    assert report.n_filled == 0
+
+
+def test_format_kill_switch_body_contains_key_fields() -> None:
+    """Body includes drawdown, cap, cash, positions, equity, ts."""
+
+    snap = EquitySnapshot(
+        timestamp=datetime(2024, 9, 2, 15, 0),
+        cash=950_000.0,
+        positions_value=0.0,
+        total_equity=950_000.0,
+        drawdown_pct=0.06,
+    )
+    cfg = RiskConfig(drawdown_kill_switch_pct=0.05)
+    body = format_kill_switch_body(snap, cfg)
+    assert "drawdown_pct=6.00%" in body
+    assert "kill_switch_cap=5.00%" in body
+    assert "cash=950000" in body
+    assert "total_equity=950000" in body
+    assert "2024-09-02T15:00:00" in body

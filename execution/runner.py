@@ -47,6 +47,7 @@ from datetime import datetime
 from typing import Any
 
 import pandas as pd
+from loguru import logger
 
 from execution.journal import PaperJournal
 from execution.protocol import (
@@ -57,6 +58,7 @@ from execution.protocol import (
     ExecutionReport,
     Fill,
     OrderIntent,
+    RiskConfig,
     utcnow,
 )
 from execution.risk import (
@@ -109,6 +111,12 @@ class PaperSessionConfig:
             ``recent_bars``. Default 50.
         bar_column: Name of the timestamp column in ``data``.
             Default ``"date"``.
+        notify_fn: Optional callback invoked when the drawdown
+            kill switch fires (CLAUDE.md 「回撤 ≥ 5% 暂停」).
+            Production passes ``ops.notify.ding``; tests pass a
+            spy closure. ``None`` (default) keeps the W7.1 paper-
+            only behavior — kill switch still halts the session,
+            but the operator only sees a loguru WARNING line.
     """
 
     initial_cash: float = DEFAULT_INITIAL_CASH
@@ -117,6 +125,7 @@ class PaperSessionConfig:
     snapshot_every_n_bars: int = 1
     max_history_depth: int = 50
     bar_column: str = "date"
+    notify_fn: Callable[[str, str], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -332,6 +341,18 @@ def run_paper_session(
             )
             if isinstance(dd_decision, Reject):
                 kill_switch_active = True
+                _notify_kill_switch(
+                    bar_ts=ts,
+                    snapshot=EquitySnapshot(
+                        timestamp=ts,
+                        cash=snap.cash,
+                        positions_value=snap.positions_value,
+                        total_equity=snap.total_equity,
+                        drawdown_pct=snap.drawdown_pct,
+                    ),
+                    risk_cfg=risk_cfg,
+                    notify_fn=session_cfg.notify_fn,
+                )
 
         # Strategy decision.
         intents = strategy(state, recent_bars)
@@ -384,6 +405,67 @@ def run_paper_session(
         final_equity=final_snap.total_equity,
         max_drawdown_pct=max_drawdown_pct,
     )
+
+
+def format_kill_switch_body(
+    snapshot: EquitySnapshot, risk_cfg: RiskConfig,
+) -> str:
+    """Build the markdown body for the drawdown kill-switch alert.
+
+    Format is plain text (one field per line) — readable on
+    钉聊 mobile client. Includes everything an operator
+    needs to decide whether to investigate: drawdown, cap,
+    cash, positions value, equity, timestamp.
+
+    Stable format (no JSON, no escape sequences) so future
+    Phase 5 parsers can extract fields via simple regex.
+    """
+    return (
+        f"drawdown_pct={snapshot.drawdown_pct:.2%}\n"
+        f"kill_switch_cap={risk_cfg.drawdown_kill_switch_pct:.2%}\n"
+        f"cash={snapshot.cash:.0f}\n"
+        f"positions_value={snapshot.positions_value:.0f}\n"
+        f"total_equity={snapshot.total_equity:.0f}\n"
+        f"timestamp={snapshot.timestamp.isoformat()}"
+    )
+
+
+def _notify_kill_switch(
+    *,
+    bar_ts: datetime,
+    snapshot: EquitySnapshot,
+    risk_cfg: RiskConfig,
+    notify_fn: Callable[[str, str], None] | None,
+) -> None:
+    """Fire the kill-switch alert (best-effort).
+
+    Always logs at WARNING via loguru. If ``notify_fn`` is
+    provided (typically ``ops.notify.ding`` in production,
+    a spy in tests), invokes it with ``(title, body)``.
+
+    A raising ``notify_fn`` is swallowed + logged — the
+    runner does not abort. 钉聊 outages are infrastructure
+    problems the operator handles separately; they should
+    NOT cascade into a paper-mode session crash.
+
+    Called exactly once per session (when the flip 0→1 happens).
+    Subsequent intents in the same session see ``kill_switch_active``
+    True and skip the notify call entirely (cheap O(1)).
+    """
+    title = f"Drawdown kill switch ({bar_ts.isoformat()})"
+    body = format_kill_switch_body(snapshot, risk_cfg)
+    logger.warning(
+        "drawdown kill switch fired equity={e:.0f} dd={d:.2%} cap={c:.2%}",
+        e=snapshot.total_equity,
+        d=snapshot.drawdown_pct,
+        c=risk_cfg.drawdown_kill_switch_pct,
+    )
+    if notify_fn is None:
+        return
+    try:
+        notify_fn(title, body)
+    except Exception:  # pragma: no cover -- best-effort alert
+        logger.exception("notify_fn raised; kill-switch alert not delivered")
 
 
 def _check_intent(

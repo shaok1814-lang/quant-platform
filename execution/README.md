@@ -154,7 +154,8 @@ max_deviation_pct=5.0)` to confirm paper-vs-live deviation < 5%.
 
 1. Snapshot equity (`adapter.query_account()`); write to journal.
 2. Check drawdown kill switch (lifetime HWM). If breached,
-   activate session-wide stop.
+   activate session-wide stop AND fire `notify_fn` (see
+   **Notifications** below).
 3. Call `strategy(state, recent_bars)`. Capture returned
    `OrderIntent`s.
 4. For each intent:
@@ -203,10 +204,60 @@ session.
 
 ## Phase 3+ deferred
 
-- 钉聊 SOFT alert on kill switch (today: loguru WARNING only).
 - W6.2 dashboard trade history page (uses journal query API).
 - W6.5 weekly cron (`0 9 * * 0` Sunday 9:00 CST, separate from
   W6.1's 18:00 daily ingest).
 - Multi-symbol bridge (Phase 3 M2/M3).
 - Multi-account support.
 - xtquant `xtdata` real-time market data subscription (Phase 4).
+- 钉聊 on XtQuantLiveAdapter reconnect exhausted (Phase 4).
+- 钉聊 on event drop count > N (Phase 4).
+
+## Notifications
+
+When the drawdown kill switch fires (CLAUDE.md 「回撤 ≥ 5% 暂停」),
+the runner invokes ``session_cfg.notify_fn(title, body)`` exactly
+once per session — at the moment the flip from inactive to
+active happens. Pass ``ops.notify.ding`` in production; pass a
+spy closure in tests. ``None`` (default) keeps the WARN-log-
+only behavior.
+
+钉聊 activation is controlled by the ``DINGTALK_WEBHOOK_URL``
+env var (see ``ops/notify.py``). The runner never raises if the
+webhook is missing — the alert is best-effort.
+
+### 钉聊 recipe
+
+```python
+import os
+from execution import run_paper_session, PaperSessionConfig
+from execution.bridge import AkquantStrategyCallable
+from research.strategies.ma_cross import MACrossStrategy
+from ops.notify import ding
+
+if os.environ.get("DINGTALK_WEBHOOK_URL"):
+    notify_fn = ding
+else:
+    def notify_fn(title, body): pass  # no-op in dev
+
+bridge = AkquantStrategyCallable(MACrossStrategy)
+report = run_paper_session(
+    strategy=bridge, data=bars,
+    adapter=AkquantPaperAdapter(), journal=PaperJournal(...),
+    session_cfg=PaperSessionConfig(notify_fn=notify_fn),
+)
+```
+
+### Alert body format
+
+```
+drawdown_pct=6.00%
+kill_switch_cap=5.00%
+cash=950000
+positions_value=0
+total_equity=950000
+timestamp=2024-09-02T15:00:00
+```
+
+Plain text, one field per line. Stable format — Phase 5 parsers
+can extract fields via simple regex without JSON parsing.
