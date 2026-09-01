@@ -71,8 +71,11 @@ from execution.risk import (
     RiskDecision,
 )
 from execution.runner import (
+    AccountSlot,
+    MultiAccountReport,
     PaperSessionConfig,
     PaperSessionReport,
+    run_multi_account_paper_session,
     run_paper_session,
 )
 
@@ -100,6 +103,7 @@ __all__ = [
     "DEFAULT_INITIAL_CASH",
     "DEFAULT_RISK_CONFIG",
     "DEFAULT_STAMP_TAX_RATE",
+    "AccountSlot",
     "AkquantPaperAdapter",
     "Allow",
     "BrokerAdapter",
@@ -110,6 +114,7 @@ __all__ = [
     "ExecutionReport",
     "ExecutionStatus",
     "Fill",
+    "MultiAccountReport",
     "OrderIntent",
     "OrderType",
     "PaperJournal",
@@ -125,6 +130,7 @@ __all__ = [
     "list_registered_brokers",
     "make_intent_id",
     "register_broker",
+    "run_multi_account_paper_session",
     "run_paper_session",
     "utcnow",
 ]

@@ -321,4 +321,4 @@ class XtQuantTradeCallback:
             return None
         if not order_remark.startswith(XtQuantTradeCallback.REMARK_PREFIX):
             return None
-        return order_remark[len(XtQuantTradeCallback.REMARK_PREFIX):]
+        return order_remark[len(XtQuantTradeCallback.REMARK_PREFIX) :]

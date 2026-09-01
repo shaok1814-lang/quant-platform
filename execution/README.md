@@ -41,29 +41,46 @@ import pandas as pd
 from pathlib import Path
 
 from execution import (
-    run_paper_session, OrderIntent, PaperJournal,
-    AkquantPaperAdapter, RiskConfig,
+    run_paper_session,
+    OrderIntent,
+    PaperJournal,
+    AkquantPaperAdapter,
+    RiskConfig,
 )
 
 today = datetime.now()
-bars = pd.DataFrame({
-    "date": [today + pd.Timedelta(minutes=i) for i in range(5)],
-    "open": [10.0]*5, "high": [10.5]*5, "low": [9.5]*5,
-    "close": [10.20, 10.30, 10.40, 10.50, 10.60],
-    "volume": [1_000_000.0]*5,
-})
+bars = pd.DataFrame(
+    {
+        "date": [today + pd.Timedelta(minutes=i) for i in range(5)],
+        "open": [10.0] * 5,
+        "high": [10.5] * 5,
+        "low": [9.5] * 5,
+        "close": [10.20, 10.30, 10.40, 10.50, 10.60],
+        "volume": [1_000_000.0] * 5,
+    }
+)
 
 state = {"bought": False}
+
+
 def strategy(s, recent):
-    if s.get("bought"): return []
+    if s.get("bought"):
+        return []
     s["bought"] = True
-    return [OrderIntent(
-        client_order_id="smoke-1", symbol="000001",
-        side="buy", quantity=100, price=10.20,
-    )]
+    return [
+        OrderIntent(
+            client_order_id="smoke-1",
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.20,
+        )
+    ]
+
 
 report = run_paper_session(
-    strategy=strategy, data=bars,
+    strategy=strategy,
+    data=bars,
     adapter=AkquantPaperAdapter(),
     journal=PaperJournal(Path("data/journal/paper.sqlite")),
 )
@@ -85,7 +102,8 @@ from pathlib import Path
 
 bridge = AkquantStrategyCallable(MACrossStrategy, symbol="000001")
 report = run_paper_session(
-    strategy=bridge, data=bars,
+    strategy=bridge,
+    data=bars,
     adapter=AkquantPaperAdapter(),
     journal=PaperJournal(Path("data/journal/ma_cross.sqlite")),
 )
@@ -126,7 +144,8 @@ bars_per_symbol = {
     "000002": df_000002,
 }
 report = run_paper_session(
-    strategy=bridge, data=bars_per_symbol,
+    strategy=bridge,
+    data=bars_per_symbol,
     adapter=AkquantPaperAdapter(),
     journal=PaperJournal(Path("data/journal/multi.sqlite")),
 )
@@ -157,14 +176,16 @@ import time
 from pathlib import Path
 
 from execution import (
-    run_paper_session, PaperJournal, OrderIntent,
+    run_paper_session,
+    PaperJournal,
+    OrderIntent,
 )
 from execution.brokers.xtquant_live import XtQuantLiveAdapter
 from execution.bridge import AkquantStrategyCallable
 from research.strategies.ma_cross import MACrossStrategy
 
 adapter = XtQuantLiveAdapter(
-    path="D:/国金QMT/userdata_mini",   # or your broker's path
+    path="D:/国金QMT/userdata_mini",  # or your broker's path
     session_id=int(time.time() * 1000),  # unique per session
     account_id="YOUR_ACCOUNT_ID",
 )
@@ -174,8 +195,10 @@ bridge = AkquantStrategyCallable(MACrossStrategy, symbol="000001")
 
 journal = PaperJournal(Path("data/journal/live.sqlite"))
 report = run_paper_session(
-    strategy=bridge, data=bars,
-    adapter=adapter, journal=journal,
+    strategy=bridge,
+    data=bars,
+    adapter=adapter,
+    journal=journal,
 )
 print(f"live: intents={report.n_intents} filled={report.n_filled}")
 
@@ -287,12 +310,17 @@ from ops.notify import ding
 if os.environ.get("DINGTALK_WEBHOOK_URL"):
     notify_fn = ding
 else:
-    def notify_fn(title, body): pass  # no-op in dev
+
+    def notify_fn(title, body):
+        pass  # no-op in dev
+
 
 bridge = AkquantStrategyCallable(MACrossStrategy)
 report = run_paper_session(
-    strategy=bridge, data=bars,
-    adapter=AkquantPaperAdapter(), journal=PaperJournal(...),
+    strategy=bridge,
+    data=bars,
+    adapter=AkquantPaperAdapter(),
+    journal=PaperJournal(...),
     session_cfg=PaperSessionConfig(notify_fn=notify_fn),
 )
 ```

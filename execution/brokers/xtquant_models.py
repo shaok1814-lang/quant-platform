@@ -44,19 +44,19 @@ __all__ = [
 # tests can construct XtOrder objects without importing xtquant).
 # ---------------------------------------------------------------------------
 
-XT_ORDER_STATUS_UNREPORTED: Final[int] = 0          # 未报
-XT_ORDER_STATUS_WAIT_REPORTING: Final[int] = 1     # 待报
-XT_ORDER_STATUS_REPORTED: Final[int] = 2           # 已报
+XT_ORDER_STATUS_UNREPORTED: Final[int] = 0  # 未报
+XT_ORDER_STATUS_WAIT_REPORTING: Final[int] = 1  # 待报
+XT_ORDER_STATUS_REPORTED: Final[int] = 2  # 已报
 #: Alias for the initial state right after we call ``order_stock``
 #: (the SDK moves the snapshot through UNREPORTED → WAIT_REPORTING →
 #: REPORTED on its own; our adapter treats the whole pre-FILLED
 #: range as "submitted").
-XT_ORDER_STATUS_SUBMITTED: Final[int] = 2            # 已报 (alias)
-XT_ORDER_STATUS_PARTIALLY_FILLED: Final[int] = 3   # 部成
-XT_ORDER_STATUS_FILLED: Final[int] = 53            # 全成
-XT_ORDER_STATUS_REJECTED: Final[int] = 54          # 废单
-XT_ORDER_STATUS_CANCELLED: Final[int] = 55         # 已撤
-XT_ORDER_STATUS_UNKNOWN: Final[int] = -1          # 未知
+XT_ORDER_STATUS_SUBMITTED: Final[int] = 2  # 已报 (alias)
+XT_ORDER_STATUS_PARTIALLY_FILLED: Final[int] = 3  # 部成
+XT_ORDER_STATUS_FILLED: Final[int] = 53  # 全成
+XT_ORDER_STATUS_REJECTED: Final[int] = 54  # 废单
+XT_ORDER_STATUS_CANCELLED: Final[int] = 55  # 已撤
+XT_ORDER_STATUS_UNKNOWN: Final[int] = -1  # 未知
 
 
 # ---------------------------------------------------------------------------

@@ -265,7 +265,9 @@ class FakeXtQuantTrader:
 
     # ---------- Query methods ----------
 
-    def query_stock_orders(self, account: object, cancelable_only: bool = False) -> list[XtOrder] | None:
+    def query_stock_orders(
+        self, account: object, cancelable_only: bool = False
+    ) -> list[XtOrder] | None:
         """Return all known orders. Mirrors the real SDK's
         ``cancelable_only`` flag."""
         if self.latency_seconds:
@@ -274,7 +276,11 @@ class FakeXtQuantTrader:
             return None
         orders = list(self._book.by_id.values())
         if cancelable_only:
-            orders = [o for o in orders if o.order_status in (XT_ORDER_STATUS_SUBMITTED, XT_ORDER_STATUS_REPORTED)]
+            orders = [
+                o
+                for o in orders
+                if o.order_status in (XT_ORDER_STATUS_SUBMITTED, XT_ORDER_STATUS_REPORTED)
+            ]
         return orders
 
     def query_stock_order(self, account: object, order_id: int) -> XtOrder | None:
@@ -336,9 +342,7 @@ class FakeXtQuantTrader:
             else 0.0
         )
         new_status = (
-            XT_ORDER_STATUS_FILLED
-            if new_traded_vol >= order.order_volume
-            else order.order_status
+            XT_ORDER_STATUS_FILLED if new_traded_vol >= order.order_volume else order.order_status
         )
         updated = XtOrder(
             order_id=order.order_id,

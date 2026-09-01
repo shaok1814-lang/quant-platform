@@ -262,15 +262,20 @@ class XtQuantLiveAdapter:
         xtquant installed, the import raises — the caller is
         expected to inject ``trader_factory`` for tests.
         """
+
         def _factory() -> Any:
             from xtquant.xttrader import XtQuantTrader
+
             return XtQuantTrader(path=self._path, session_id=self._session_id)
+
         return _factory
 
     def _default_account_factory(self) -> Callable[..., Any]:
         def _factory(account_id: str, account_type: str) -> Any:
             from xtquant.xttype import StockAccount
+
             return StockAccount(account_id, account_type)
+
         return _factory
 
     # ---------- Lifecycle ----------
@@ -360,11 +365,7 @@ class XtQuantLiveAdapter:
         # Translate OrderIntent → xtquant call.
         remark = f"{XtQuantTradeCallback.REMARK_PREFIX}{intent.client_order_id}"
         stock_code = _symbol_to_xtcode(intent.symbol)
-        order_type_int = (
-            self._trader.STOCK_BUY
-            if intent.side == "buy"
-            else self._trader.STOCK_SELL
-        )
+        order_type_int = self._trader.STOCK_BUY if intent.side == "buy" else self._trader.STOCK_SELL
         price_type_int = (
             self._trader.FIX_PRICE if intent.order_type == "limit" else self._trader.MARKET_PRICE
         )
@@ -543,7 +544,8 @@ class XtQuantLiveAdapter:
         if isinstance(event, OrderEvent):
             if event.client_order_id and event.broker_order_id:
                 self._broker_to_client.setdefault(
-                    event.broker_order_id, event.client_order_id,
+                    event.broker_order_id,
+                    event.client_order_id,
                 )
         elif isinstance(event, TradeEvent):
             # Trade events don't carry our client_order_id (xtquant
@@ -586,9 +588,7 @@ class XtQuantLiveAdapter:
         except Exception as exc:  # pragma: no cover -- defensive
             logger.warning("trader.disconnect() raised: {e}", e=exc)
         for attempt in range(self._reconnect_max_attempts):
-            backoff = min(
-                60.0, self._reconnect_backoff_base_s * (2 ** attempt)
-            )
+            backoff = min(60.0, self._reconnect_backoff_base_s * (2**attempt))
             logger.info(
                 "xtquant reconnect attempt {n}/{m} after {b:.1f}s",
                 n=attempt + 1,
@@ -615,8 +615,7 @@ class XtQuantLiveAdapter:
                 logger.error("reconnect raised: {e}", e=exc)
                 continue
         logger.error(
-            "xtquant reconnect exhausted after {n} attempts; "
-            "adapter now refuses new orders",
+            "xtquant reconnect exhausted after {n} attempts; adapter now refuses new orders",
             n=self._reconnect_max_attempts,
         )
         # W7.1 Phase 5: notify the operator that the live
@@ -668,8 +667,7 @@ class XtQuantLiveAdapter:
         if not self._connected or self._disconnected:
             return False
         logger.warning(
-            "xtquant silent for {s:.1f}s (no events, no submits); "
-            "forcing reconnect",
+            "xtquant silent for {s:.1f}s (no events, no submits); forcing reconnect",
             s=silence,
         )
         # Synthesize a DisconnectedEvent into the queue path so

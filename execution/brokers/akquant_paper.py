@@ -346,7 +346,9 @@ class AkquantPaperAdapter:
         cur = self._positions.get(symbol)
         if cur is None or cur.quantity == 0:
             self._positions[symbol] = Position(
-                symbol=symbol, quantity=qty, avg_cost=price,
+                symbol=symbol,
+                quantity=qty,
+                avg_cost=price,
             )
             return
         # Weighted-average cost on adding to a long position.
@@ -407,11 +409,7 @@ class AkquantPaperAdapter:
 
         notional = report.avg_fill_price * report.filled_quantity
         commission = notional * self.commission_rate
-        stamp_tax = (
-            notional * self.stamp_tax_rate
-            if intent.side == "sell"
-            else 0.0
-        )
+        stamp_tax = notional * self.stamp_tax_rate if intent.side == "sell" else 0.0
         return Fill(
             fill_id=f"fill-{uuid.uuid4().hex}",
             client_order_id=intent.client_order_id,

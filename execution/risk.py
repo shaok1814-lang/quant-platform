@@ -197,8 +197,7 @@ def check_daily_trade_count(
     if today_trades >= cfg.max_daily_trades:
         return Reject(
             reason=(
-                f"{REASON_DAILY_TRADES}: today_trades {today_trades} "
-                f">= cap {cfg.max_daily_trades}"
+                f"{REASON_DAILY_TRADES}: today_trades {today_trades} >= cap {cfg.max_daily_trades}"
             )
         )
     return Allow()

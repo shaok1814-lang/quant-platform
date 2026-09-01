@@ -192,9 +192,7 @@ class CompareResult:
     @property
     def passed(self) -> bool:
         """True iff the comparison meets the CLAUDE.md ≤ 5% target."""
-        return (
-            not self.rows and self.n_paper_only == 0 and self.n_live_only == 0
-        )
+        return not self.rows and self.n_paper_only == 0 and self.n_live_only == 0
 
 
 # ---------------------------------------------------------------------------
@@ -398,9 +396,7 @@ class PaperJournal:
 
     # ---------- query API ----------
 
-    def query_intents(
-        self, day: date_cls | None = None
-    ) -> list[OrderIntent]:
+    def query_intents(self, day: date_cls | None = None) -> list[OrderIntent]:
         """Read back OrderIntents, optionally filtered by trade date.
 
         Args:

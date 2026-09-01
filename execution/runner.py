@@ -704,3 +704,234 @@ def _sync_bridge_position(strategy: Any, adapter: Any, symbol: str) -> None:
             "bridge.update_position({sym!r}) raised; position mirror may be stale on next bar",
             sym=symbol,
         )
+
+
+# ---------------------------------------------------------------------------
+# Multi-account paper session (W7.1 last deferred item)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AccountSlot:
+    """One account in a multi-account paper session.
+
+    Each slot is an independent (strategy, adapter, journal, risk)
+    tuple. The multi-account orchestrator
+    (:func:`run_multi_account_paper_session`) calls
+    :func:`run_paper_session` once per slot, sharing only the
+    input ``data`` — every other piece of state (cash, positions,
+    fills, journal rows, risk HWM) is per-slot.
+
+    **Why per-slot isolation matters** (CLAUDE.md 「资金分散到多
+    账户」):
+      * 10% position cap on account A is enforced independently
+        from account B. Cross-account exposure isn't summed.
+      * Drawdown kill switch is per-slot (per-adapter HWM). Account
+        A's drawdown doesn't halt account B.
+      * Each account's journal is a separate SQLite file — audit
+        trail is per-account, no cross-contamination.
+
+    Attributes:
+        name: Human-readable identifier (e.g. ``"cash"`` /
+            ``"margin"``). Used as the dict key in
+            :attr:`MultiAccountReport.per_account` + in the
+            per-slot notify title.
+        strategy: The strategy callable for this slot. Independent
+            from other slots (e.g. cash account = MA Cross,
+            margin account = TopN Mean Reversion).
+        adapter: BrokerAdapter. Each slot owns its own state
+            (positions, cash, kill-switch HWM). ``connect()``
+            must be called before :func:`run_multi_account_paper_session`
+            runs (the orchestrator does NOT auto-connect —
+            explicit lifecycle is easier to audit).
+        journal: :class:`PaperJournal` for this slot. Different
+            file per slot so 4-week paper validation replays are
+            independent.
+        risk_cfg: Per-slot risk config. Default
+            :data:`protocol.DEFAULT_RISK_CONFIG` (10% / 20 / 5%).
+            Slots can opt into stricter caps (e.g. margin = 5%
+            position cap).
+        initial_cash: Starting cash for this slot. Default
+            :data:`protocol.DEFAULT_INITIAL_CASH` (1M).
+        notify_fn: Per-slot kill-switch 钉聊 handler. ``None`` →
+            silent (default). Production wires
+            ``ops.notify.ding``; tests use a spy closure.
+    """
+
+    name: str
+    strategy: Any
+    adapter: Any
+    journal: PaperJournal
+    risk_cfg: Any = None  # None → runner uses DEFAULT_RISK_CONFIG
+    initial_cash: float = DEFAULT_INITIAL_CASH
+    notify_fn: Callable[[str, str], None] | None = None
+
+
+@dataclass(frozen=True)
+class MultiAccountReport:
+    """Aggregated outcome of a multi-account paper session.
+
+    One :class:`PaperSessionReport` per slot under
+    :attr:`per_account` (keyed by ``AccountSlot.name``). Aggregate
+    stats:
+      * ``total_initial_equity`` — sum of slot starting cash.
+      * ``total_final_equity`` — sum of slot final equity.
+      * ``aggregated_max_drawdown_pct`` — **worst** drawdown across
+        slots (operator cares about the worst-performing account).
+      * ``n_kill_switches_fired`` — slots whose kill switch flipped
+        0→1 during the session.
+
+    Attributes:
+        started_at: UTC datetime when the orchestrator began.
+        finished_at: UTC datetime when the orchestrator finished.
+        per_account: ``{slot_name: PaperSessionReport}``.
+        total_initial_equity: Sum of slot starting cash.
+        total_final_equity: Sum of slot final equity.
+        aggregated_max_drawdown_pct: Worst max_drawdown across slots.
+        n_kill_switches_fired: Number of slots whose kill switch
+            fired.
+    """
+
+    started_at: datetime
+    finished_at: datetime
+    per_account: dict[str, PaperSessionReport]
+    total_initial_equity: float
+    total_final_equity: float
+    aggregated_max_drawdown_pct: float
+    n_kill_switches_fired: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Render as a JSON-serializable dict (dashboard-friendly)."""
+        return {
+            "started_at": self.started_at.isoformat(),
+            "finished_at": self.finished_at.isoformat(),
+            "per_account": {k: v.to_dict() for k, v in self.per_account.items()},
+            "total_initial_equity": self.total_initial_equity,
+            "total_final_equity": self.total_final_equity,
+            "aggregated_max_drawdown_pct": self.aggregated_max_drawdown_pct,
+            "n_kill_switches_fired": self.n_kill_switches_fired,
+        }
+
+
+def run_multi_account_paper_session(
+    accounts: list[AccountSlot],
+    data: pd.DataFrame | dict[str, pd.DataFrame],
+    *,
+    session_cfg: PaperSessionConfig | None = None,
+) -> MultiAccountReport:
+    """Run a paper session across multiple accounts in sequence.
+
+    For each bar, the orchestrator drives a single bar timeline
+    through every account (each account's adapter sees the same
+    bar — but maintains its own positions / cash / HWM). Each
+    account's risk config / journal / adapter is independent.
+
+    The simplest correct implementation: call
+    :func:`run_paper_session` once per slot, share the ``data``
+    input only. The bar timeline is effectively synchronized (each
+    slot walks the same data) but the slot-internal bookkeeping
+    stays per-slot.
+
+    Args:
+        accounts: Non-empty list of :class:`AccountSlot`. Each slot
+            owns its strategy / adapter / journal / risk config.
+        data: OHLCV (single DataFrame or multi-symbol dict) shared
+            across all slots. Same as :func:`run_paper_session`.
+        session_cfg: Optional global :class:`PaperSessionConfig`
+            applied to every slot. Slot-level
+            ``initial_cash`` / ``notify_fn`` override the global
+            values when set.
+
+    Returns:
+        :class:`MultiAccountReport` with per-slot reports +
+        aggregated stats.
+
+    Raises:
+        ValueError: ``accounts`` is empty.
+    """
+    from execution.protocol import DEFAULT_RISK_CONFIG
+
+    if not accounts:
+        raise ValueError("accounts must be non-empty")
+
+    started_at = utcnow()
+    base_cfg = session_cfg or PaperSessionConfig()
+
+    per_account_reports: dict[str, PaperSessionReport] = {}
+    total_initial = 0.0
+    total_final = 0.0
+    worst_dd = 0.0
+    n_kill_switches = 0
+
+    for slot in accounts:
+        # Per-slot PaperSessionConfig: slot-level initial_cash /
+        # notify_fn override the global cfg. max_history_depth /
+        # bar_column come from the global (uniform across slots).
+        cfg = PaperSessionConfig(
+            initial_cash=slot.initial_cash,
+            commission_rate=base_cfg.commission_rate,
+            stamp_tax_rate=base_cfg.stamp_tax_rate,
+            snapshot_every_n_bars=base_cfg.snapshot_every_n_bars,
+            max_history_depth=base_cfg.max_history_depth,
+            bar_column=base_cfg.bar_column,
+            notify_fn=slot.notify_fn if slot.notify_fn is not None else base_cfg.notify_fn,
+        )
+        risk_cfg = slot.risk_cfg if slot.risk_cfg is not None else DEFAULT_RISK_CONFIG
+        report = run_paper_session(
+            strategy=slot.strategy,
+            data=data,
+            adapter=slot.adapter,
+            journal=slot.journal,
+            risk_cfg=risk_cfg,
+            session_cfg=cfg,
+        )
+        per_account_reports[slot.name] = report
+        total_initial += slot.initial_cash
+        total_final += report.final_equity
+        # Kill-switch detection uses the adapter's LIFETIME drawdown
+        # (the runner checks ``adapter.query_account().drawdown_pct``
+        # against the kill cap on each bar; ``paper_report.max_drawdown_pct``
+        # is the SESSION-local drawdown, which is 0% in cost-basis
+        # paper mode even when the lifetime drawdown exceeds the cap).
+        # This matches the W6.5 weekly paper job's design.
+        slot_lifetime_dd = _adapter_lifetime_drawdown(slot.adapter)
+        worst_dd = max(worst_dd, slot_lifetime_dd)
+        # Per-slot kill-switch count (best-effort): the runner
+        # already fired the per-slot notify_fn when applicable
+        # (W7.1 Phase 3 contract).
+        if slot_lifetime_dd >= 0.05:
+            n_kill_switches += 1
+
+    finished_at = utcnow()
+    return MultiAccountReport(
+        started_at=started_at,
+        finished_at=finished_at,
+        per_account=per_account_reports,
+        total_initial_equity=total_initial,
+        total_final_equity=total_final,
+        aggregated_max_drawdown_pct=worst_dd,
+        n_kill_switches_fired=n_kill_switches,
+    )
+
+
+def _adapter_lifetime_drawdown(adapter: Any) -> float:
+    """Best-effort read of an adapter's LIFETIME drawdown.
+
+    Used for the multi-account aggregated count + max. Returns
+    ``0.0`` on any attribute / method missing — the orchestrator
+    doesn't require every adapter to expose this.
+
+    Note: ``query_account().drawdown_pct`` already reflects the
+    adapter's HWM-relative drawdown. Cost-basis paper mode reports
+    0% even when the session HWM was artificially lifted (the
+    paper adapter only marks HWM via ``query_account``); for those
+    cases, callers should also check ``adapter._high_water_mark``
+    directly. The orchestrator only needs the runtime signal —
+    the paper adapter's HWM update happens inside ``query_account``
+    after a fill, which is fine for the multi-account count.
+    """
+    try:
+        snap = adapter.query_account()
+        return float(snap.drawdown_pct)
+    except Exception:  # pragma: no cover -- best-effort
+        return 0.0

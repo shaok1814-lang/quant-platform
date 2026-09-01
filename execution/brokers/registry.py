@@ -48,9 +48,7 @@ def register_broker(name: str, factory: Callable[..., BrokerAdapter]) -> None:
         # but a different factory for the same name is a real
         # conflict and we want to know.
         if _REGISTRY[name] is not factory:
-            raise ValueError(
-                f"broker {name!r} already registered with a different factory"
-            )
+            raise ValueError(f"broker {name!r} already registered with a different factory")
         return
     _REGISTRY[name] = factory
 
@@ -58,10 +56,7 @@ def register_broker(name: str, factory: Callable[..., BrokerAdapter]) -> None:
 def create_registered_broker(name: str, **kwargs: object) -> BrokerAdapter:
     """Instantiate the broker registered under ``name``."""
     if name not in _REGISTRY:
-        raise KeyError(
-            f"broker {name!r} not registered. known: "
-            f"{sorted(_REGISTRY.keys())}"
-        )
+        raise KeyError(f"broker {name!r} not registered. known: {sorted(_REGISTRY.keys())}")
     factory = _REGISTRY[name]
     return factory(**kwargs)
 
