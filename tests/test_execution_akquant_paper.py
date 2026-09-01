@@ -124,8 +124,12 @@ def test_place_order_rejects_missing_price() -> None:
     a = AkquantPaperAdapter()
     a.connect()
     bad = OrderIntent(
-        client_order_id="c1", symbol="000001", side="buy",
-        quantity=100, price=None, order_type="market",
+        client_order_id="c1",
+        symbol="000001",
+        side="buy",
+        quantity=100,
+        price=None,
+        order_type="market",
     )
     rep = a.place_order(bad)
     assert rep.status == "rejected"
@@ -274,12 +278,15 @@ def test_registry_create_returns_akquant_instance() -> None:
     assert adapter.name == "akquant_paper"
 
 
-def test_registry_create_xtquant_returns_stub() -> None:
-    """``create_registered_broker('xtquant_live')`` returns the Phase 2 stub."""
-    from execution.brokers import create_registered_broker
+def test_registry_create_xtquant_returns_class() -> None:
+    """``create_registered_broker('xtquant_live')`` resolves to XtQuantLiveAdapter.
 
-    adapter = create_registered_broker("xtquant_live")
-    assert isinstance(adapter, XtQuantLiveAdapter)
-    assert adapter.name == "xtquant_live"
-    with pytest.raises(NotImplementedError):
-        adapter.place_order(_buy("c1"))
+    Phase 2: XtQuantLiveAdapter is now a real (lazy-import) adapter
+    requiring path/session_id/account_id. We only verify the registry
+    resolution — actual connect / place_order requires a real broker
+    (Windows + xtquant + miniQMT) and is tested separately.
+    """
+    from execution.brokers import list_registered_brokers
+
+    assert "xtquant_live" in list_registered_brokers()
+    assert XtQuantLiveAdapter.name == "xtquant_live"

@@ -21,6 +21,7 @@ from __future__ import annotations
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -95,10 +96,15 @@ def test_buy_once_fills_and_persists(tmp_path: Path) -> None:
         if s.get("bought"):
             return []
         s["bought"] = True
-        return [OrderIntent(
-            client_order_id="buy-once-1", symbol="000001",
-            side="buy", quantity=100, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id="buy-once-1",
+                symbol="000001",
+                side="buy",
+                quantity=100,
+                price=10.0,
+            )
+        ]
 
     report = run_paper_session(strategy, bars, adapter=adapter, journal=journal)
     assert report.n_intents == 1
@@ -132,10 +138,15 @@ def test_position_cap_blocks_buy(tmp_path: Path) -> None:
         s.setdefault("calls", 0)
         s["calls"] += 1
         # 12000 shares * 10.0 / 1M = 12% → would breach 10% cap
-        return [OrderIntent(
-            client_order_id=f"big-{s['calls']}", symbol="000001",
-            side="buy", quantity=12_000, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id=f"big-{s['calls']}",
+                symbol="000001",
+                side="buy",
+                quantity=12_000,
+                price=10.0,
+            )
+        ]
 
     report = run_paper_session(strategy, bars, adapter=adapter, journal=journal)
     # Strategy emits once per bar (2 bars) → 2 intents, 2 rejections.
@@ -159,14 +170,16 @@ def test_daily_trade_count_blocks_after_cap(tmp_path: Path) -> None:
     always zero and the cap is never reached.)
     """
     today = datetime.now(UTC).replace(tzinfo=None, hour=10, minute=0, second=0, microsecond=0)
-    bars = pd.DataFrame({
-        "date": [today + pd.Timedelta(minutes=i) for i in range(5)],
-        "open": [10.0] * 5,
-        "high": [10.5] * 5,
-        "low": [9.5] * 5,
-        "close": [10.0] * 5,
-        "volume": [1_000_000.0] * 5,
-    })
+    bars = pd.DataFrame(
+        {
+            "date": [today + pd.Timedelta(minutes=i) for i in range(5)],
+            "open": [10.0] * 5,
+            "high": [10.5] * 5,
+            "low": [9.5] * 5,
+            "close": [10.0] * 5,
+            "volume": [1_000_000.0] * 5,
+        }
+    )
 
     adapter = AkquantPaperAdapter()
     journal = PaperJournal(tmp_path / "j.sqlite")
@@ -174,18 +187,26 @@ def test_daily_trade_count_blocks_after_cap(tmp_path: Path) -> None:
     # Custom config: max 2 trades per day.
     risk_cfg = RiskConfig(max_daily_trades=2, max_position_pct=1.0)
 
-
     def strategy(s, recent):
         s.setdefault("count", 0)
         s["count"] += 1
         cid = f"c-{s['count']}"
-        return [OrderIntent(
-            client_order_id=cid, symbol="000001",
-            side="buy", quantity=10, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id=cid,
+                symbol="000001",
+                side="buy",
+                quantity=10,
+                price=10.0,
+            )
+        ]
 
     report = run_paper_session(
-        strategy, bars, adapter=adapter, journal=journal, risk_cfg=risk_cfg,
+        strategy,
+        bars,
+        adapter=adapter,
+        journal=journal,
+        risk_cfg=risk_cfg,
     )
     # First 2 fills, then 3 rejections.
     assert report.n_filled == 2
@@ -215,17 +236,25 @@ def test_drawdown_kill_switch_halts_session(tmp_path: Path) -> None:
         drawdown_kill_switch_pct=0.05,
     )
 
-
     def strategy(s, recent):
         s.setdefault("intent_count", 0)
         s["intent_count"] += 1
-        return [OrderIntent(
-            client_order_id=f"c-{s['intent_count']}", symbol="000001",
-            side="buy", quantity=100, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id=f"c-{s['intent_count']}",
+                symbol="000001",
+                side="buy",
+                quantity=100,
+                price=10.0,
+            )
+        ]
 
     report = run_paper_session(
-        strategy, bars, adapter=adapter, journal=journal, risk_cfg=risk_cfg,
+        strategy,
+        bars,
+        adapter=adapter,
+        journal=journal,
+        risk_cfg=risk_cfg,
     )
     # Bar 0: snapshot at start → drawdown 5.66% (1_060_000 vs 1_000_000)
     # → kill switch activates. All 4 intents rejected.
@@ -240,25 +269,34 @@ def test_runner_uses_journal_as_source_of_truth_for_daily_count(tmp_path: Path) 
     """If the journal already has fills from a prior session, the daily
     count starts from that baseline (NOT zero)."""
     today = datetime.now(UTC).replace(tzinfo=None, hour=10, minute=0, second=0, microsecond=0)
-    bars = pd.DataFrame({
-        "date": [today + pd.Timedelta(minutes=i) for i in range(2)],
-        "open": [10.0] * 2,
-        "high": [10.5] * 2,
-        "low": [9.5] * 2,
-        "close": [10.0] * 2,
-        "volume": [1_000_000.0] * 2,
-    })
+    bars = pd.DataFrame(
+        {
+            "date": [today + pd.Timedelta(minutes=i) for i in range(2)],
+            "open": [10.0] * 2,
+            "high": [10.5] * 2,
+            "low": [9.5] * 2,
+            "close": [10.0] * 2,
+            "volume": [1_000_000.0] * 2,
+        }
+    )
 
     # Pre-populate journal with 3 fills on TODAY.
     journal = PaperJournal(tmp_path / "j.sqlite")
     for i in range(3):
         from execution.protocol import Fill
 
-        journal.record_fill(Fill(
-            fill_id=f"pre-{i}", client_order_id=f"pre-{i}",
-            broker_order_id="", symbol="000001", side="buy",
-            quantity=10, price=10.0, timestamp=datetime.now(UTC).replace(tzinfo=None),
-        ))
+        journal.record_fill(
+            Fill(
+                fill_id=f"pre-{i}",
+                client_order_id=f"pre-{i}",
+                broker_order_id="",
+                symbol="000001",
+                side="buy",
+                quantity=10,
+                price=10.0,
+                timestamp=datetime.now(UTC).replace(tzinfo=None),
+            )
+        )
 
     adapter = AkquantPaperAdapter()
     # max_daily_trades=5 → 3 pre-existing + 1 new fill = 4 (under cap).
@@ -268,13 +306,22 @@ def test_runner_uses_journal_as_source_of_truth_for_daily_count(tmp_path: Path) 
         if s.get("called"):
             return []
         s["called"] = True
-        return [OrderIntent(
-            client_order_id="new", symbol="000001",
-            side="buy", quantity=10, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id="new",
+                symbol="000001",
+                side="buy",
+                quantity=10,
+                price=10.0,
+            )
+        ]
 
     report = run_paper_session(
-        strategy, bars, adapter=adapter, journal=journal, risk_cfg=risk_cfg,
+        strategy,
+        bars,
+        adapter=adapter,
+        journal=journal,
+        risk_cfg=risk_cfg,
     )
     assert report.n_filled == 1  # the 4th trade (3 pre + 1 new)
     assert report.n_risk_rejected == 0
@@ -286,11 +333,18 @@ def test_runner_uses_journal_as_source_of_truth_for_daily_count(tmp_path: Path) 
     for i in range(3):
         from execution.protocol import Fill
 
-        journal2.record_fill(Fill(
-            fill_id=f"pre-{i}", client_order_id=f"pre-{i}",
-            broker_order_id="", symbol="000001", side="buy",
-            quantity=10, price=10.0, timestamp=datetime.now(UTC).replace(tzinfo=None),
-        ))
+        journal2.record_fill(
+            Fill(
+                fill_id=f"pre-{i}",
+                client_order_id=f"pre-{i}",
+                broker_order_id="",
+                symbol="000001",
+                side="buy",
+                quantity=10,
+                price=10.0,
+                timestamp=datetime.now(UTC).replace(tzinfo=None),
+            )
+        )
 
     risk_cfg_strict = RiskConfig(max_daily_trades=3, max_position_pct=1.0)
 
@@ -298,13 +352,21 @@ def test_runner_uses_journal_as_source_of_truth_for_daily_count(tmp_path: Path) 
         if s.get("called"):
             return []
         s["called"] = True
-        return [OrderIntent(
-            client_order_id="new", symbol="000001",
-            side="buy", quantity=10, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id="new",
+                symbol="000001",
+                side="buy",
+                quantity=10,
+                price=10.0,
+            )
+        ]
 
     report2 = run_paper_session(
-        strategy2, bars2, adapter=adapter, journal=journal2,
+        strategy2,
+        bars2,
+        adapter=adapter,
+        journal=journal2,
         risk_cfg=risk_cfg_strict,
     )
     assert report2.n_risk_rejected == 1
@@ -319,14 +381,16 @@ def test_runner_uses_journal_as_source_of_truth_for_daily_count(tmp_path: Path) 
 def _bars_for_kill_switch(n: int = 4) -> pd.DataFrame:
     """Build n trivial bars dated today (so daily-traded tests align)."""
     today = datetime.now(UTC).replace(tzinfo=None, hour=10, minute=0, second=0, microsecond=0)
-    return pd.DataFrame({
-        "date": [today + pd.Timedelta(minutes=i) for i in range(n)],
-        "open": [10.0] * n,
-        "high": [10.5] * n,
-        "low": [9.5] * n,
-        "close": [10.0] * n,
-        "volume": [1_000_000.0] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": [today + pd.Timedelta(minutes=i) for i in range(n)],
+            "open": [10.0] * n,
+            "high": [10.5] * n,
+            "low": [9.5] * n,
+            "close": [10.0] * n,
+            "volume": [1_000_000.0] * n,
+        }
+    )
 
 
 def test_kill_switch_invokes_notify_fn(tmp_path: Path) -> None:
@@ -341,10 +405,15 @@ def test_kill_switch_invokes_notify_fn(tmp_path: Path) -> None:
     def strategy(s, recent):
         s.setdefault("n", 0)
         s["n"] += 1
-        return [OrderIntent(
-            client_order_id=f"c-{s['n']}", symbol="000001",
-            side="buy", quantity=100, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id=f"c-{s['n']}",
+                symbol="000001",
+                side="buy",
+                quantity=100,
+                price=10.0,
+            )
+        ]
 
     notify_calls: list[tuple[str, str]] = []
 
@@ -358,14 +427,15 @@ def test_kill_switch_invokes_notify_fn(tmp_path: Path) -> None:
     )
 
     report = run_paper_session(
-        strategy, bars, adapter=adapter, journal=journal,
+        strategy,
+        bars,
+        adapter=adapter,
+        journal=journal,
         risk_cfg=risk_cfg,
         session_cfg=PaperSessionConfig(notify_fn=my_notify),
     )
     # Exactly one notify at the 0→1 flip.
-    assert len(notify_calls) == 1, (
-        f"expected 1 notify, got {len(notify_calls)}: {notify_calls}"
-    )
+    assert len(notify_calls) == 1, f"expected 1 notify, got {len(notify_calls)}: {notify_calls}"
     title, body = notify_calls[0]
     assert "kill switch" in title.lower()
     assert "drawdown_pct=" in body
@@ -387,10 +457,15 @@ def test_kill_switch_no_notify_fn_logs_warning_only(tmp_path: Path) -> None:
     def strategy(s, recent):
         s.setdefault("n", 0)
         s["n"] += 1
-        return [OrderIntent(
-            client_order_id=f"c-{s['n']}", symbol="000001",
-            side="buy", quantity=100, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id=f"c-{s['n']}",
+                symbol="000001",
+                side="buy",
+                quantity=100,
+                price=10.0,
+            )
+        ]
 
     risk_cfg = RiskConfig(
         max_position_pct=1.0,
@@ -400,7 +475,10 @@ def test_kill_switch_no_notify_fn_logs_warning_only(tmp_path: Path) -> None:
 
     # Default PaperSessionConfig → notify_fn=None. Runner must NOT raise.
     report = run_paper_session(
-        strategy, bars, adapter=adapter, journal=journal,
+        strategy,
+        bars,
+        adapter=adapter,
+        journal=journal,
         risk_cfg=risk_cfg,
     )
     assert report.n_filled == 0  # still halted
@@ -421,10 +499,15 @@ def test_notify_fn_exception_does_not_kill_run(tmp_path: Path) -> None:
     def strategy(s, recent):
         s.setdefault("n", 0)
         s["n"] += 1
-        return [OrderIntent(
-            client_order_id=f"c-{s['n']}", symbol="000001",
-            side="buy", quantity=100, price=10.0,
-        )]
+        return [
+            OrderIntent(
+                client_order_id=f"c-{s['n']}",
+                symbol="000001",
+                side="buy",
+                quantity=100,
+                price=10.0,
+            )
+        ]
 
     def bad_notify(title: str, body: str) -> None:
         raise RuntimeError("钉聊 webhook down")
@@ -437,7 +520,10 @@ def test_notify_fn_exception_does_not_kill_run(tmp_path: Path) -> None:
 
     # RuntimeError inside bad_notify must NOT propagate.
     report = run_paper_session(
-        strategy, bars, adapter=adapter, journal=journal,
+        strategy,
+        bars,
+        adapter=adapter,
+        journal=journal,
         risk_cfg=risk_cfg,
         session_cfg=PaperSessionConfig(notify_fn=bad_notify),
     )
@@ -463,3 +549,183 @@ def test_format_kill_switch_body_contains_key_fields() -> None:
     assert "cash=950000" in body
     assert "total_equity=950000" in body
     assert "2024-09-02T15:00:00" in body
+
+
+# ---------------------------------------------------------------------------
+# Bridge auto-sync after fill (W7.1 Phase 4)
+# ---------------------------------------------------------------------------
+
+
+class _RecordingBridge:
+    """Minimal strategy stand-in with ``update_position`` recording.
+
+    Acts like AkquantStrategyCallable's update_position contract:
+    receives ``(symbol=, quantity=, avg_cost=)`` keyword args and
+    stores them. The runner's duck-type detection picks it up.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(self, state: dict[str, Any], recent_bars: Any) -> list:
+        # Emit a buy on the first bar; a sell on the second bar.
+        bar_idx = state.get("_bar_idx", 0)
+        state["_bar_idx"] = bar_idx + 1
+        if bar_idx == 0:
+            return [
+                OrderIntent(
+                    client_order_id="auto-1",
+                    symbol="000001",
+                    side="buy",
+                    quantity=100,
+                    price=10.0,
+                )
+            ]
+        if bar_idx == 1:
+            return [
+                OrderIntent(
+                    client_order_id="auto-2",
+                    symbol="000001",
+                    side="sell",
+                    quantity=100,
+                    price=10.0,
+                )
+            ]
+        return []
+
+    def update_position(self, *, symbol: str, quantity: int, avg_cost: float) -> None:
+        self.calls.append({"symbol": symbol, "quantity": quantity, "avg_cost": avg_cost})
+
+
+def test_runner_auto_syncs_bridge_position_after_fill(tmp_path: Path) -> None:
+    """Each successful fill triggers ``bridge.update_position(...)``.
+
+    Strategy emits one buy then one sell. After buy:
+    ``update_position(000001, 100, 10.0)``. After sell: symbol
+    is flat → ``update_position(000001, 0, 0.0)``.
+    """
+    today = datetime.now(UTC).replace(tzinfo=None, hour=10, minute=0, second=0, microsecond=0)
+    bars = pd.DataFrame(
+        {
+            "date": [today + pd.Timedelta(minutes=i) for i in range(3)],
+            "open": [10.0] * 3,
+            "high": [10.5] * 3,
+            "low": [9.5] * 3,
+            "close": [10.0] * 3,
+            "volume": [1_000_000.0] * 3,
+        }
+    )
+    adapter = AkquantPaperAdapter()
+    journal = PaperJournal(tmp_path / "j.sqlite")
+
+    bridge = _RecordingBridge()
+    report = run_paper_session(
+        strategy=bridge,
+        data=bars,
+        adapter=adapter,
+        journal=journal,
+    )
+    assert report.n_filled == 2
+
+    # Two update_position calls: one for the buy, one for the sell
+    # (sell leaves us flat so quantity=0).
+    assert len(bridge.calls) == 2, bridge.calls
+    # Buy call.
+    assert bridge.calls[0] == {"symbol": "000001", "quantity": 100, "avg_cost": 10.0}
+    # Sell call — flat → qty=0.
+    assert bridge.calls[1] == {"symbol": "000001", "quantity": 0, "avg_cost": 0.0}
+
+
+def test_runner_skips_update_position_for_plain_callable(tmp_path: Path) -> None:
+    """Plain callables (no ``update_position`` method) are unaffected.
+
+    No crash, no error — runner duck-type detects the absence.
+    """
+    today = datetime.now(UTC).replace(tzinfo=None, hour=10, minute=0, second=0, microsecond=0)
+    bars = pd.DataFrame(
+        {
+            "date": [today + pd.Timedelta(minutes=i) for i in range(2)],
+            "open": [10.0] * 2,
+            "high": [10.5] * 2,
+            "low": [9.5] * 2,
+            "close": [10.0] * 2,
+            "volume": [1_000_000.0] * 2,
+        }
+    )
+    adapter = AkquantPaperAdapter()
+    journal = PaperJournal(tmp_path / "j.sqlite")
+
+    def plain(s, recent):
+        if s.get("done"):
+            return []
+        s["done"] = True
+        return [
+            OrderIntent(
+                client_order_id="plain-1",
+                symbol="000001",
+                side="buy",
+                quantity=100,
+                price=10.0,
+            )
+        ]
+
+    report = run_paper_session(
+        strategy=plain,
+        data=bars,
+        adapter=adapter,
+        journal=journal,
+    )
+    assert report.n_filled == 1
+    # No exception; runner completed normally.
+
+
+def test_runner_bridge_update_position_exception_does_not_crash(
+    tmp_path: Path,
+) -> None:
+    """A buggy ``update_position`` is swallowed — runner still completes.
+
+    The bridge is best-effort; an exception must NOT cascade into
+    a paper-mode session crash (CLAUDE.md 「数据可靠 > 单点失败
+    断整个系统」).
+    """
+    today = datetime.now(UTC).replace(tzinfo=None, hour=10, minute=0, second=0, microsecond=0)
+    bars = pd.DataFrame(
+        {
+            "date": [today + pd.Timedelta(minutes=i) for i in range(2)],
+            "open": [10.0] * 2,
+            "high": [10.5] * 2,
+            "low": [9.5] * 2,
+            "close": [10.0] * 2,
+            "volume": [1_000_000.0] * 2,
+        }
+    )
+    adapter = AkquantPaperAdapter()
+    journal = PaperJournal(tmp_path / "j.sqlite")
+
+    class BadBridge:
+        def __call__(self, state, recent):
+            if state.get("done"):
+                return []
+            state["done"] = True
+            return [
+                OrderIntent(
+                    client_order_id="bad-1",
+                    symbol="000001",
+                    side="buy",
+                    quantity=100,
+                    price=10.0,
+                )
+            ]
+
+        def update_position(self, **kwargs: Any) -> None:
+            raise RuntimeError("bridge bug")
+
+    bridge = BadBridge()
+    report = run_paper_session(
+        strategy=bridge,
+        data=bars,
+        adapter=adapter,
+        journal=journal,
+    )
+    # Fill happened; session completed despite the bridge raising.
+    assert report.n_filled == 1

@@ -88,9 +88,17 @@ __all__ = [
 Bar = dict
 
 
-# Strategy signature: ``def strategy(state, recent_bars) -> list[OrderIntent]``
+# Strategy signature (multi-symbol, Phase 4):
+# ``def strategy(state, recent_bars_per_symbol) -> list[OrderIntent]``
+# where ``recent_bars_per_symbol`` is ``{symbol: [bar, bar, ...]}``.
 # The runner owns ``state``; strategies mutate it freely.
-Strategy = Callable[[dict[str, Any], list[Bar]], list[OrderIntent]]
+#
+# For backward compat with W7.1 / Phase 2 single-symbol callables
+# (which take a list), the runner doesn't enforce the dict shape
+# at the type level — the bridge is the canonical multi-symbol
+# adapter; legacy callables that want single-symbol mode just
+# iterate one key from the dict.
+Strategy = Callable[[dict[str, Any], dict[str, list[Bar]]], list[OrderIntent]]
 
 
 @dataclass(frozen=True)
@@ -186,23 +194,85 @@ def _row_to_bar(row: pd.Series, ts: datetime) -> Bar:
     }
 
 
-def _to_bars_df(data: pd.DataFrame | dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Normalize the runner's data input to a single ``pd.DataFrame``.
+def _to_bars_per_symbol(
+    data: pd.DataFrame | dict[str, pd.DataFrame],
+    *,
+    bridge_symbol: str | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Normalize the runner's data input to ``{symbol: pd.DataFrame}``.
 
-    Phase 1 supports single-symbol only. Multi-symbol input (a dict)
-    is rejected with a clear ValueError pointing at the Phase 2
-    extension point.
+    Multi-symbol mode (Phase 4): accepts ``dict[str, pd.DataFrame]``
+    and returns as-is (validates types).
+
+    Backward compat single-symbol mode: accepts ``pd.DataFrame``
+    and wraps into ``{bridge_symbol: df}``. ``bridge_symbol`` is
+    extracted from an ``AkquantStrategyCallable._fixed_symbol``
+    upstream; the caller passes it in.
     """
-    if isinstance(data, pd.DataFrame):
-        return data.reset_index(drop=True)
     if isinstance(data, dict):
-        raise ValueError(
-            "multi-symbol session is Phase 2. Pass a single pd.DataFrame; "
-            "for now, run one session per symbol."
-        )
+        for sym, df in data.items():
+            if not isinstance(df, pd.DataFrame):
+                raise TypeError(f"data[{sym!r}] must be pd.DataFrame; got {type(df).__name__}")
+        return {sym: df.reset_index(drop=True) for sym, df in data.items()}
+    if isinstance(data, pd.DataFrame):
+        if bridge_symbol is None:
+            raise ValueError(
+                "single-symbol pd.DataFrame data requires the strategy to "
+                "be an AkquantStrategyCallable constructed with `symbol=...`. "
+                "For multi-symbol, pass a dict[str, pd.DataFrame]."
+            )
+        return {bridge_symbol: data.reset_index(drop=True)}
     raise TypeError(
-        f"data must be a pd.DataFrame (Phase 1); got {type(data).__name__}"
+        f"data must be pd.DataFrame or dict[str, pd.DataFrame]; got {type(data).__name__}"
     )
+
+
+def _detect_bridge_symbol(strategy: Any) -> str | None:
+    """If ``strategy`` is an AkquantStrategyCallable in single-symbol
+    mode, return its ``_fixed_symbol`` so the runner can wrap a
+    pd.DataFrame into the per-symbol dict. Otherwise None.
+    """
+    fixed = getattr(strategy, "_fixed_symbol", None)
+    return fixed if isinstance(fixed, str) and fixed else None
+
+
+_DEFAULT_SYMBOL: str = "_default_"
+
+
+def _adapt_plain_strategy(
+    strategy: Callable[[dict[str, Any], list[Bar]], list[OrderIntent]],
+) -> Callable[[dict[str, Any], dict[str, list[Bar]]], list[OrderIntent]]:
+    """Wrap a single-symbol plain callable (W7.1 signature) into a
+    multi-symbol signature (Phase 4 signature).
+
+    Picks the FIRST symbol's bars from the per-symbol dict and
+    passes them as a list. Works for tests that use ``def
+    strategy(state, bars)`` inline — the runner can keep calling
+    them without test changes.
+
+    For multi-symbol strategies, use ``AkquantStrategyCallable``
+    directly (Phase 4 canonical path).
+
+    Stores the original callable on ``_adapted._wrapped_strategy`` so
+    ``_sync_bridge_position`` can find bridge methods like
+    ``update_position`` even after wrapping hides them on the
+    adapted wrapper (a Python closure isn't a class with MRO, and
+    forwarding via ``__getattr__`` would surprise users who set attrs).
+    """
+
+    def _adapted(
+        state: dict[str, Any], recent_per_symbol: dict[str, list[Bar]]
+    ) -> list[OrderIntent]:
+        if not recent_per_symbol:
+            return []
+        # Pick any one symbol's bars. Single-symbol plain callables
+        # don't care which; they all hold the same OHLCV (they
+        # don't know about symbols).
+        first_bars = next(iter(recent_per_symbol.values()))
+        return strategy(state, first_bars)
+
+    _adapted._wrapped_strategy = strategy  # type: ignore[attr-defined]
+    return _adapted
 
 
 # ---------------------------------------------------------------------------
@@ -253,24 +323,53 @@ def run_paper_session(
     if session_cfg is None:
         session_cfg = PaperSessionConfig()
 
-    bars_df = _to_bars_df(data)
+    # Bridge detection: strategies with ``_fixed_symbol`` attribute
+    # are ``AkquantStrategyCallable`` (multi-symbol aware). Plain
+    # callables (W7.1 legacy single-symbol signature) get adapted
+    # to the multi-symbol dict via _adapt_plain_strategy. Duck-type
+    # check avoids a hard import cycle between runner and bridge.
+    is_bridge = hasattr(strategy, "_fixed_symbol")
+    if not is_bridge:
+        # Plain callable: wrap under a default symbol so
+        # ``_to_bars_per_symbol`` accepts pd.DataFrame input.
+        bridge_symbol_for_data = _DEFAULT_SYMBOL
+        strategy = _adapt_plain_strategy(strategy)
+    else:
+        bridge_symbol_for_data = getattr(strategy, "_fixed_symbol", None)
+
+    bars_per_symbol = _to_bars_per_symbol(
+        data,
+        bridge_symbol=bridge_symbol_for_data,
+    )
+
+    # Validate every DataFrame has the required columns + normalize
+    # the timestamp column once.
     required = {"open", "high", "low", "close", "volume", session_cfg.bar_column}
-    missing = required - set(bars_df.columns)
-    if missing:
-        raise ValueError(
-            f"data missing required columns: {sorted(missing)}; "
-            f"got {list(bars_df.columns)}"
+    for sym, df in bars_per_symbol.items():
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"data[{sym!r}] missing required columns: {sorted(missing)}; got {list(df.columns)}"
+            )
+        bars_per_symbol[sym] = df.copy()
+        bars_per_symbol[sym][session_cfg.bar_column] = pd.to_datetime(
+            bars_per_symbol[sym][session_cfg.bar_column]
         )
 
-    # Normalize timestamp column to datetime.
-    bars_df = bars_df.copy()
-    bars_df[session_cfg.bar_column] = pd.to_datetime(bars_df[session_cfg.bar_column])
+    # All symbols must have the same number of bars (the runner is
+    # bar-by-bar synchronous — multi-symbol means each bar i has
+    # one bar per symbol). Mismatched lengths raise a clear error.
+    n_bars_set = {len(df) for df in bars_per_symbol.values()}
+    if len(n_bars_set) > 1:
+        raise ValueError(f"all symbols must have the same number of bars; got {n_bars_set}")
+    n_bars = next(iter(n_bars_set)) if n_bars_set else 0
 
     started_at = utcnow()
     state: dict[str, Any] = {
         "bought": False,  # convenience for the smoke-test strategy
     }
-    recent_bars: list[Bar] = []
+    # Per-symbol recent_bars cache. Keyed by symbol.
+    recent_per_symbol: dict[str, list[Bar]] = {sym: [] for sym in bars_per_symbol}
 
     # Per-run counters.
     n_intents = 0
@@ -290,17 +389,22 @@ def run_paper_session(
 
     # Parse all bar timestamps up front (cheap; lets us bucket fills
     # by trading day for daily_trade_count without re-parsing).
-    timestamps: list[datetime] = list(bars_df[session_cfg.bar_column])
+    # Use the first symbol's timestamps as the canonical list — all
+    # symbols must have aligned bars (checked above).
+    first_sym = next(iter(bars_per_symbol))
+    timestamps: list[datetime] = list(bars_per_symbol[first_sym][session_cfg.bar_column])
 
     # Main loop. Each iteration is "at bar i", processing whatever
-    # the strategy emitted for that bar.
-    for i in range(len(bars_df)):
-        row = bars_df.iloc[i]
+    # the strategy emitted for that bar across all symbols.
+    for i in range(n_bars):
         ts = timestamps[i]
-        bar = _row_to_bar(row, ts)
-        recent_bars.append(bar)
-        if len(recent_bars) > session_cfg.max_history_depth:
-            recent_bars = recent_bars[-session_cfg.max_history_depth:]
+        # Build per-symbol recent_bars dict up to index i.
+        for sym, df in bars_per_symbol.items():
+            row = df.iloc[i]
+            bar = _row_to_bar(row, ts)
+            recent_per_symbol[sym].append(bar)
+            if len(recent_per_symbol[sym]) > session_cfg.max_history_depth:
+                recent_per_symbol[sym] = recent_per_symbol[sym][-session_cfg.max_history_depth :]
 
         # Snapshot for journal + drawdown computation. We snapshot
         # BEFORE running the strategy so the strategy sees its own
@@ -354,8 +458,8 @@ def run_paper_session(
                     notify_fn=session_cfg.notify_fn,
                 )
 
-        # Strategy decision.
-        intents = strategy(state, recent_bars)
+        # Strategy decision. Pass the per-symbol recent_bars dict.
+        intents = strategy(state, recent_per_symbol)
         if not intents:
             continue
         n_intents += len(intents)
@@ -392,6 +496,13 @@ def run_paper_session(
                 if fill is not None:
                     with contextlib.suppress(Exception):  # pragma: no cover
                         journal.record_fill(fill)
+                # Auto-sync the bridge's FakePosition mirror so the
+                # AKQuant strategy sees accurate ``self.position.size``
+                # on the next bar. Skipped silently for plain callables
+                # (no ``update_position`` method). Best-effort: a buggy
+                # bridge must NOT crash the session (CLAUDE.md 「数据
+                # 可靠 > 单点失败断整个系统」).
+                _sync_bridge_position(strategy, adapter, intent.symbol)
 
     finished_at = utcnow()
     final_snap = adapter.query_account()
@@ -408,7 +519,8 @@ def run_paper_session(
 
 
 def format_kill_switch_body(
-    snapshot: EquitySnapshot, risk_cfg: RiskConfig,
+    snapshot: EquitySnapshot,
+    risk_cfg: RiskConfig,
 ) -> str:
     """Build the markdown body for the drawdown kill-switch alert.
 
@@ -491,10 +603,7 @@ def _check_intent(
     """
     if kill_switch_active:
         return Reject(
-            reason=(
-                "drawdown_kill_switch: session halted by previous-bar "
-                "drawdown >= kill switch"
-            )
+            reason=("drawdown_kill_switch: session halted by previous-bar drawdown >= kill switch")
         )
     if not risk_cfg.enabled:
         return Allow()
@@ -551,3 +660,47 @@ def _make_fill_record(
         stamp_tax=stamp_tax,
         timestamp=report.timestamp or utcnow(),
     )
+
+
+def _sync_bridge_position(strategy: Any, adapter: Any, symbol: str) -> None:
+    """Best-effort: sync ``strategy``'s FakePosition after a fill.
+
+    Looks up the post-fill position from ``adapter.query_positions()``
+    and forwards it via ``strategy.update_position(symbol=, qty=, avg=)``.
+
+    Resolves the actual bridge target via ``_wrapped_strategy`` (set
+    by :func:`_adapt_plain_strategy` for legacy single-symbol
+    callables wrapped into the multi-symbol signature) — without
+    this indirection, a plain callable wrapped by the runner would
+    hide its own ``update_position`` method behind the closure.
+
+    Strategy that is NOT an :class:`AkquantStrategyCallable` (i.e.
+    has no ``update_position`` method on the resolved target) is
+    skipped silently — plain callables manage their own state via
+    the ``state`` dict.
+
+    Flat position (``symbol`` absent from the adapter's positions)
+    is passed as ``quantity=0, avg_cost=0.0`` so the strategy sees a
+    clean zero on the next bar (rather than a stale non-zero from a
+    prior fill).
+
+    Exceptions in the bridge are swallowed (logged at WARNING):
+    the bridge is best-effort infrastructure; a buggy bridge must
+    NOT crash the paper session (CLAUDE.md 「数据可靠 > 单点失败
+    断整个系统」).
+    """
+    target = getattr(strategy, "_wrapped_strategy", strategy)
+    update_fn = getattr(target, "update_position", None)
+    if not callable(update_fn):
+        return  # plain callable — no position mirror to update
+    try:
+        positions = {p.symbol: p for p in adapter.query_positions()}
+        pos = positions.get(symbol)
+        quantity = pos.quantity if pos is not None else 0
+        avg_cost = pos.avg_cost if pos is not None else 0.0
+        update_fn(symbol=symbol, quantity=quantity, avg_cost=avg_cost)
+    except Exception:
+        logger.exception(
+            "bridge.update_position({sym!r}) raised; position mirror may be stale on next bar",
+            sym=symbol,
+        )

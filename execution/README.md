@@ -88,11 +88,10 @@ report = run_paper_session(
     strategy=bridge, data=bars,
     adapter=AkquantPaperAdapter(),
     journal=PaperJournal(Path("data/journal/ma_cross.sqlite")),
-    # After each fill, sync the bridge's fake-position mirror:
 )
-# Phase 3 will wire run_paper_session to call bridge.update_position
-# after each successful fill. For now, do it manually if you want
-# the strategy to see accurate position.size on subsequent bars.
+# The runner auto-calls ``bridge.update_position(symbol, qty, avg)``
+# after each successful fill (Phase 4). The strategy sees accurate
+# ``self.position.size`` on the next bar without manual wiring.
 ```
 
 The bridge:
@@ -100,8 +99,47 @@ The bridge:
   of submitting through AKQuant's normal execution backend.
 - Patches `get_history_df(count)` to return a slice of the runner's
   `recent_bars`.
-- Maintains a `FakePosition` mirror (`bridge.update_position(...)`)
-  so the strategy sees accurate `self.position.size`.
+- Maintains a `FakePosition` mirror (synced by the runner via
+  `bridge.update_position(...)` after each fill) so the strategy
+  sees accurate `self.position.size`.
+- Supports both **single-symbol** (`symbol="000001"`) and
+  **multi-symbol** (default — pass `data={symbol: df, ...}` to
+  `run_paper_session`; strategy emits intents with explicit
+  `symbol=` args).
+
+## Multi-symbol paper mode (W7.1 Phase 4)
+
+For strategies that trade a basket (e.g. W3's
+`TopNMeanReversionStrategy`), pass a `dict[str, pd.DataFrame]` to
+the runner and use the bridge with no `symbol=` constructor arg:
+
+```python
+from execution.bridge import AkquantStrategyCallable
+from execution import run_paper_session, AkquantPaperAdapter, PaperJournal
+from research.strategies.topn_mean_reversion import TopNMeanReversionStrategy
+from pathlib import Path
+
+bridge = AkquantStrategyCallable(TopNMeanReversionStrategy)  # multi-symbol
+bars_per_symbol = {
+    "000001": df_000001,
+    "600000": df_600000,
+    "000002": df_000002,
+}
+report = run_paper_session(
+    strategy=bridge, data=bars_per_symbol,
+    adapter=AkquantPaperAdapter(),
+    journal=PaperJournal(Path("data/journal/multi.sqlite")),
+)
+```
+
+The runner drives `on_bar` once per symbol per bar (per-symbol
+positional `active_symbol` is swapped on the bridge before each
+call so `self.position.size` reads the right symbol's quantity).
+Captured intents carry their own `symbol=`; the runner fans them
+through risk → adapter → journal independently. Each symbol's
+FakePosition is synced after its fills, so cross-symbol strategies
+emit `order_target_percent(symbol=Y)` from inside `on_bar(X)` and
+still see correct per-symbol position mirrors.
 
 ## Live mode (Windows + xtquant + miniQMT)
 
@@ -202,16 +240,27 @@ the adapter tests use `FakeXtQuantTrader` as the trader. Windows
 + xtquant + miniQMT is required only to actually run a live
 session.
 
-## Phase 3+ deferred
+## Phase 4 status
+
+Closed (this commit):
+
+- **Multi-symbol bridge** — `AkquantStrategyCallable(symbol=None)`
+  routes `order_target_percent(symbol=X)` per-symbol; `get_history_df
+  (count=, symbol=)` and `self.position` are scoped per-symbol.
+- **Runner auto-sync of `bridge.update_position` after fill** — the
+  runner reads `adapter.query_positions()` post-fill and forwards
+  to `bridge.update_position` (skipped silently for plain callables;
+  exceptions swallowed).
+
+Still deferred (Phase 4+ future):
 
 - W6.2 dashboard trade history page (uses journal query API).
 - W6.5 weekly cron (`0 9 * * 0` Sunday 9:00 CST, separate from
   W6.1's 18:00 daily ingest).
-- Multi-symbol bridge (Phase 3 M2/M3).
 - Multi-account support.
-- xtquant `xtdata` real-time market data subscription (Phase 4).
-- 钉聊 on XtQuantLiveAdapter reconnect exhausted (Phase 4).
-- 钉聊 on event drop count > N (Phase 4).
+- xtquant `xtdata` real-time market data subscription.
+- 钉聊 on `XtQuantLiveAdapter` reconnect exhausted.
+- 钉聊 on event drop count > N.
 
 ## Notifications
 
