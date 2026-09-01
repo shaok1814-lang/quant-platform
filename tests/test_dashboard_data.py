@@ -32,6 +32,9 @@ from data_layer.storage.duck import DuckStore  # noqa: E402
 from ops.dashboard_data import (  # noqa: E402
     compute_strategy_equity,
     load_multi_symbol_universe,
+    load_paper_fills,
+    load_paper_intents,
+    load_paper_run_summaries,
     load_symbol_bars,
     load_universe_status,
 )
@@ -297,3 +300,193 @@ def test_compute_strategy_equity_runs_on_synthetic_multi_symbol(tmp_path: Path) 
     assert isinstance(equity, pd.Series)
     # Result has metric rows on the canonical set.
     assert not result.metrics_df.empty
+
+
+# ---------------------------------------------------------------------------
+# Paper trade history loaders (W6.2.3)
+# ---------------------------------------------------------------------------
+
+
+def _write_weekly_report(
+    reports_dir: Path,
+    *,
+    run_date: str,
+    symbol: str = "000001",
+    n_fills: int = 1,
+    final_equity: float = 999_000.0,
+    max_dd: float = 0.01,
+    kill_switch: bool = False,
+) -> Path:
+    """Drop a ``weekly_<run_date>.json`` matching the
+    WeeklyPaperReport schema."""
+    import json
+
+    path = reports_dir / f"weekly_{run_date}.json"
+    path.write_text(
+        json.dumps(
+            {
+                "run_date": run_date,
+                "symbol": symbol,
+                "start_date": "2026-08-01",
+                "end_date": "2026-08-31",
+                "n_bars": 30,
+                "started_at": f"{run_date}T09:00:00+00:00",
+                "duration_s": 0.5,
+                "n_intents": n_fills,
+                "n_risk_rejected": 0,
+                "n_filled": n_fills,
+                "final_equity": final_equity,
+                "max_drawdown_pct": max_dd,
+                "kill_switch_fired": kill_switch,
+                "report_path": str(path),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_load_paper_run_summaries_missing_dir_returns_empty(
+    tmp_path: Path,
+) -> None:
+    """Missing reports directory → empty DataFrame (no exception)."""
+    df = load_paper_run_summaries(tmp_path / "no-such")
+    assert df.empty
+    # Columns preserved so downstream display code can show headers.
+    assert "run_date" in df.columns
+    assert "symbol" in df.columns
+
+
+def test_load_paper_run_summaries_empty_dir_returns_empty(
+    tmp_path: Path,
+) -> None:
+    """Directory exists but no JSON files → empty DataFrame."""
+    empty = tmp_path / "reports"
+    empty.mkdir()
+    df = load_paper_run_summaries(empty)
+    assert df.empty
+    assert "run_date" in df.columns
+
+
+def test_load_paper_run_summaries_populated(tmp_path: Path) -> None:
+    """Three weekly JSONs → three rows sorted by run_date desc."""
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    # Insert in non-sorted order to verify sort.
+    _write_weekly_report(reports, run_date="2026-08-24")
+    _write_weekly_report(reports, run_date="2026-08-31", n_fills=2)
+    _write_weekly_report(reports, run_date="2026-08-17")
+
+    df = load_paper_run_summaries(reports)
+    assert len(df) == 3
+    # Sorted desc by run_date.
+    assert list(df["run_date"]) == [
+        pd.Timestamp("2026-08-31").date(),
+        pd.Timestamp("2026-08-24").date(),
+        pd.Timestamp("2026-08-17").date(),
+    ]
+    # Field plumbing preserved.
+    row = df.iloc[1]  # 2026-08-24
+    assert row["symbol"] == "000001"
+    assert int(row["n_filled"]) == 1
+    assert bool(row["kill_switch_fired"]) is False
+
+
+def test_load_paper_run_summaries_skips_unreadable_json(
+    tmp_path: Path,
+) -> None:
+    """A corrupt JSON file is logged + skipped, not raised."""
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    _write_weekly_report(reports, run_date="2026-08-24")
+    (reports / "weekly_broken.json").write_text(
+        "{not valid json",
+        encoding="utf-8",
+    )
+    df = load_paper_run_summaries(reports)
+    # Only the valid file made it.
+    assert len(df) == 1
+    assert str(df.iloc[0]["run_date"]) == "2026-08-24"
+
+
+def test_load_paper_fills_missing_journal_returns_empty(tmp_path: Path) -> None:
+    """Missing journal → empty DataFrame (no exception)."""
+    fills = load_paper_fills(tmp_path / "no-such.sqlite")
+    assert fills.empty
+    # Column names preserved so the UI can still render an empty table.
+    assert "fill_id" in fills.columns
+    assert "symbol" in fills.columns
+
+
+def test_load_paper_intents_missing_journal_returns_empty(
+    tmp_path: Path,
+) -> None:
+    """Missing journal → empty DataFrame."""
+    intents = load_paper_intents(tmp_path / "no-such.sqlite")
+    assert intents.empty
+    assert "client_order_id" in intents.columns
+
+
+def test_load_paper_fills_roundtrip(tmp_path: Path) -> None:
+    """Write a few fills via PaperJournal, read them back via
+    load_paper_fills, verify columns + values."""
+    from datetime import datetime
+
+    from execution.journal import PaperJournal
+    from execution.protocol import Fill
+
+    jpath = tmp_path / "j.sqlite"
+    journal = PaperJournal(jpath)
+    journal.record_fill(
+        Fill(
+            fill_id="f1",
+            client_order_id="c1",
+            broker_order_id="b1",
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.0,
+            commission=0.30,
+            stamp_tax=0.0,
+            timestamp=datetime(2026, 8, 31, 9, 30),
+        )
+    )
+
+    fills = load_paper_fills(jpath)
+    assert len(fills) == 1
+    assert fills.iloc[0]["symbol"] == "000001"
+    assert int(fills.iloc[0]["quantity"]) == 100
+    assert abs(float(fills.iloc[0]["price"]) - 10.0) < 1e-9
+
+
+def test_load_paper_intents_roundtrip(tmp_path: Path) -> None:
+    """Intents round-trip through PaperJournal + load_paper_intents."""
+    from datetime import datetime
+
+    from execution.journal import PaperJournal
+    from execution.protocol import OrderIntent
+    from execution.risk import Allow
+
+    jpath = tmp_path / "j.sqlite"
+    journal = PaperJournal(jpath)
+    journal.record_intent(
+        OrderIntent(
+            client_order_id="c1",
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.0,
+            reason="test",
+        ),
+        Allow(),
+        bar_timestamp=datetime(2026, 8, 31, 9, 30),
+    )
+
+    intents = load_paper_intents(jpath)
+    assert len(intents) == 1
+    assert intents.iloc[0]["symbol"] == "000001"
+    # Journal stores the decision by its class lowercased name
+    # (Allow / Reject); ``Allow()`` → "allow". Lowercased to
+    # guard against changes to the Allow/Reject class hierarchy.
+    assert intents.iloc[0]["risk_decision"].lower() == "allow"

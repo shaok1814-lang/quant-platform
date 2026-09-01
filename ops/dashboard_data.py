@@ -1,4 +1,4 @@
-"""Dashboard data loaders (W6.2.1).
+"""Dashboard data loaders (W6.2.1 + W6.2.3 trade history).
 
 Pure-function loaders / wrappers for the Streamlit dashboard
 (:mod:`ops.dashboard`). Kept SEPARATE from the Streamlit entry so
@@ -17,14 +17,23 @@ Modules exposed:
   * :func:`compute_strategy_equity` — wrap
     :func:`akquant.run_backtest` and return the per-symbol equity
     curve + summary stats.
+  * :func:`load_paper_run_summaries` — list of weekly paper runs
+    (from :data:`DEFAULT_PAPER_DIR` JSON files). Drives the
+    "Paper Trade History" page top table.
+  * :func:`load_paper_fills` — fills from a single journal SQLite.
+  * :func:`load_paper_intents` — intents from a single journal SQLite.
 
-The functions do NOT raise on an empty DuckDB — they return
-empty frames / empty dicts so the Streamlit UI shows a friendly
-"No data yet" message instead of an error stack trace.
+The functions do NOT raise on an empty DuckDB / missing paper
+directory / missing journal — they return empty frames / empty
+dicts so the Streamlit UI shows a friendly "No data yet" message
+instead of an error stack trace.
 """
 
 from __future__ import annotations
 
+import json
+import sqlite3
+from datetime import date as date_cls
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -37,8 +46,12 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEFAULT_DUCKDB_PATH",
+    "DEFAULT_PAPER_DIR",
     "compute_strategy_equity",
     "load_multi_symbol_universe",
+    "load_paper_fills",
+    "load_paper_intents",
+    "load_paper_run_summaries",
     "load_symbol_bars",
     "load_universe_status",
 ]
@@ -46,6 +59,7 @@ __all__ = [
 
 _PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 DEFAULT_DUCKDB_PATH: Final[Path] = _PROJECT_ROOT / "data" / "duckdb" / "daily.duckdb"
+DEFAULT_PAPER_DIR: Final[Path] = _PROJECT_ROOT / "data" / "paper_reports"
 
 
 # ---------------------------------------------------------------------------
@@ -211,3 +225,206 @@ def compute_strategy_equity(
             n=len(data) if isinstance(data, dict) else 1,
         )
     return equity, result
+
+
+# ---------------------------------------------------------------------------
+# Paper trade history (W6.2.3)
+# ---------------------------------------------------------------------------
+
+
+def load_paper_run_summaries(
+    reports_dir: str | Path | None = None,
+) -> pd.DataFrame:
+    """Read all ``weekly_<date>.json`` files under ``reports_dir``.
+
+    Each ``WeeklyPaperReport`` JSON (written by
+    :func:`ops.weekly_paper_job.run_weekly_paper_session`) is one
+    row in the returned DataFrame. Drives the top table on the
+    "Paper Trade History" dashboard page.
+
+    Returns:
+        DataFrame with columns matching the WeeklyPaperReport
+        schema (``run_date``, ``symbol``, ``start_date``,
+        ``end_date``, ``n_bars``, ``n_intents``, ``n_risk_rejected``,
+        ``n_filled``, ``final_equity``, ``max_drawdown_pct``,
+        ``kill_switch_fired``, ``report_path``). Sorted by
+        ``run_date`` descending (most recent run first).
+
+    Missing directory / no JSON files → empty DataFrame with the
+    expected columns. No exception (dashboard shows "No data yet"
+    cleanly).
+    """
+    cols = [
+        "run_date",
+        "symbol",
+        "start_date",
+        "end_date",
+        "n_bars",
+        "n_intents",
+        "n_risk_rejected",
+        "n_filled",
+        "final_equity",
+        "max_drawdown_pct",
+        "kill_switch_fired",
+        "report_path",
+    ]
+    base = Path(reports_dir) if reports_dir is not None else DEFAULT_PAPER_DIR
+    if not base.exists():
+        return pd.DataFrame(columns=cols)
+
+    rows: list[dict[str, Any]] = []
+    for path in sorted(base.glob("weekly_*.json")):
+        try:
+            with path.open(encoding="utf-8") as f:
+                rows.append(json.load(f))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning(
+                "skipping unreadable weekly paper report {p}: {e}",
+                p=path,
+                e=exc,
+            )
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    df = pd.DataFrame(rows)
+    # Coerce date columns for downstream display / filtering.
+    for c in ("run_date", "start_date", "end_date"):
+        if c in df.columns:
+            df[c] = pd.to_datetime(df[c]).dt.date
+    df = df.sort_values("run_date", ascending=False).reset_index(drop=True)
+    # Reorder columns to a stable display order.
+    return df[[c for c in cols if c in df.columns]]
+
+
+def _read_journal_table(
+    journal_path: str | Path,
+    table: str,
+    columns: list[str],
+    date_column: str,
+    *,
+    day: date_cls | None = None,
+) -> pd.DataFrame:
+    """Read all rows from one journal table.
+
+    Helper shared by :func:`load_paper_fills` and
+    :func:`load_paper_intents`. Keeps the SQL surface in one place
+    so a journal schema bump only touches this function.
+
+    Args:
+        journal_path: Path to the SQLite file (e.g. one of the
+            ``journal_<date>.sqlite`` files written by the weekly
+            paper job).
+        table: ``"fill"`` or ``"order_intent"``.
+        columns: Expected columns in SELECT order.
+        date_column: Column name carrying the ISO timestamp.
+        day: If set, filter rows whose ``date_column`` starts with
+            ``YYYY-MM-DD``.
+
+    Missing journal → empty DataFrame.
+    """
+    db_path = Path(journal_path)
+    if not db_path.exists():
+        return pd.DataFrame(columns=columns)
+
+    where = ""
+    params: tuple = ()
+    if day is not None:
+        where = f" WHERE substr({date_column}, 1, 10) = ?"
+        params = (day.isoformat(),)
+    sql = (
+        f"SELECT {', '.join(columns)} FROM {table}{where} "
+        f"ORDER BY {date_column}"
+    )
+    try:
+        with sqlite3.connect(str(db_path)) as con:
+            rows = con.execute(sql, params).fetchall()
+    except sqlite3.DatabaseError as exc:
+        logger.warning(
+            "journal {p} unreadable ({e}); returning empty frame",
+            p=db_path,
+            e=exc,
+        )
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def load_paper_fills(
+    journal_path: str | Path,
+    *,
+    day: date_cls | None = None,
+) -> pd.DataFrame:
+    """Read :class:`execution.protocol.Fill` rows from a journal.
+
+    Used by the "Paper Trade History" page's "fills of selected
+    run" sub-table.
+
+    Args:
+        journal_path: Path to a ``PaperJournal`` SQLite file.
+        day: Optional filter on the fill timestamp (UTC date).
+
+    Returns:
+        DataFrame with columns ``fill_id``, ``client_order_id``,
+        ``broker_order_id``, ``symbol``, ``side``, ``quantity``,
+        ``price``, ``commission``, ``stamp_tax``, ``timestamp``.
+        Empty DataFrame on missing journal.
+    """
+    return _read_journal_table(
+        journal_path,
+        table="fill",
+        columns=[
+                "fill_id",
+                "client_order_id",
+                "broker_order_id",
+                "symbol",
+                "side",
+                "quantity",
+                "price",
+                "commission",
+                "stamp_tax",
+                "timestamp",
+            ],
+        date_column="timestamp",
+        day=day,
+    )
+
+
+def load_paper_intents(
+    journal_path: str | Path,
+    *,
+    day: date_cls | None = None,
+) -> pd.DataFrame:
+    """Read :class:`execution.protocol.OrderIntent` rows from a journal.
+
+    Used by the "Paper Trade History" page's "intents of selected
+    run" sub-table. Captures BOTH risk-rejected and accepted intents
+    (the journal records both with their ``risk_decision`` column;
+    we project only the OrderIntent shape here since the strategy
+    columns are what an audit cares about).
+
+    Args:
+        journal_path: Path to a ``PaperJournal`` SQLite file.
+        day: Optional filter on the bar timestamp (UTC date).
+
+    Returns:
+        DataFrame with columns ``client_order_id``, ``bar_timestamp``,
+        ``symbol``, ``side``, ``quantity``, ``price``, ``order_type``,
+        ``reason``, ``risk_decision``, ``risk_reason``. Empty
+        DataFrame on missing journal.
+    """
+    return _read_journal_table(
+        journal_path,
+        table="order_intent",
+        columns=[
+                "client_order_id",
+                "bar_timestamp",
+                "symbol",
+                "side",
+                "quantity",
+                "price",
+                "order_type",
+                "reason",
+                "risk_decision",
+                "risk_reason",
+            ],
+        date_column="bar_timestamp",
+        day=day,
+    )

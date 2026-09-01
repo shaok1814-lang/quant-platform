@@ -1,10 +1,10 @@
-"""W6.2.2 Streamlit dashboard — entry point.
+"""W6.2.2 + W6.2.3 Streamlit dashboard — entry point.
 
 Launch::
 
     streamlit run ops/dashboard.py
 
-Streams:
+Pages:
 
   * **Page 1 — Universe Status** — ``ops.dashboard_data.load_universe_status``
     rendered as a table; the user sees row counts / last_dt / fetcher
@@ -15,6 +15,10 @@ Streams:
     per-symbol AKQuant backtests run on the loaded DuckDB bars and
     the resulting NAV curves are plotted together on one chart. A
     small stats table shows per-symbol Sharpe / Sortino / MDD.
+
+  * **Page 3 — Paper Trade History** (W6.2.3) — list of weekly paper
+    runs (one row per Sunday's :func:`ops.weekly_paper_job.run_weekly_paper_session`).
+    Pick a run → fills + intents of that run below.
 
 Design choices:
 
@@ -49,7 +53,11 @@ import streamlit as st
 
 from ops.dashboard_data import (
     DEFAULT_DUCKDB_PATH,
+    DEFAULT_PAPER_DIR,
     compute_strategy_equity,
+    load_paper_fills,
+    load_paper_intents,
+    load_paper_run_summaries,
     load_universe_status,
 )
 
@@ -66,6 +74,7 @@ st.set_page_config(
 PAGES: dict[str, str] = {
     "Universe Status": ":bar_chart: universe",
     "Equity Curves": ":chart_with_upwards_trend: equity curves",
+    "Paper Trade History": ":memo: paper trade history",
 }
 
 
@@ -362,6 +371,115 @@ def render_equity_curves() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Page 3 — Paper Trade History (W6.2.3)
+# ---------------------------------------------------------------------------
+
+
+def _journal_path_for_run(reports_dir: Path, run_date_iso: str) -> Path:
+    """The weekly paper job writes a journal SQLite per run, named
+    ``journal_<YYYY-MM-DD>.sqlite``. Same directory as the JSON."""
+    return reports_dir / f"journal_{run_date_iso}.sqlite"
+
+
+@st.cache_data(show_spinner=False)
+def _load_runs(reports_dir_str: str) -> pd.DataFrame:
+    """Cached: re-reads the directory only when the user re-runs the
+    page (Streamlit invalidates on widget change)."""
+    return load_paper_run_summaries(Path(reports_dir_str))
+
+
+def render_paper_trade_history() -> None:
+    st.header("Paper Trade History")
+    st.caption(
+        "Per-weekly paper-validation runs (W6.5 cron: every Sunday "
+        "9:00 Asia/Shanghai). Pick a run to drill into its fills "
+        "+ intents. Source: ``data/paper_reports/`` JSON + journal "
+        "SQLite files written by ``ops.weekly_paper_job.run_weekly_paper_session``."
+    )
+
+    runs = _load_runs(str(DEFAULT_PAPER_DIR))
+    if runs.empty:
+        st.warning(
+            "No weekly paper reports yet. The W6.5 cron will write the "
+            "first JSON on the next Sunday 9:00 Asia/Shanghai. To "
+            "produce one manually, run "
+            "``ops.weekly_paper_job.run_weekly_paper_session``."
+        )
+        return
+
+    # KPI tiles for the latest run (top of page).
+    latest = runs.iloc[0]
+    cols = st.columns(4)
+    with cols[0]:
+        st.metric("total runs", len(runs))
+    with cols[1]:
+        st.metric("latest run_date", str(latest["run_date"]))
+    with cols[2]:
+        st.metric(
+            "latest final_equity",
+            f"{float(latest['final_equity']):,.0f}",
+        )
+    with cols[3]:
+        st.metric(
+            "latest max_drawdown",
+            f"{float(latest['max_drawdown_pct']):.2%}",
+        )
+
+    # Display table — make dates strings (Streamlit default formatter
+    # is friendly on date objects but string avoids tz surprises).
+    runs_display = runs.copy()
+    for c in ("run_date", "start_date", "end_date"):
+        runs_display[c] = runs_display[c].astype(str)
+    st.dataframe(runs_display, use_container_width=True, hide_index=True)
+
+    # Run selector for the drill-down. Use a synthetic label
+    # ``YYYY-MM-DD | symbol | n_fills`` so the user sees the run
+    # at a glance.
+    def _label(idx: int) -> str:
+        row = runs.iloc[idx]
+        return (
+            f"{row['run_date']} | {row['symbol']} | "
+            f"fills={int(row['n_filled'])}"
+        )
+
+    selected = st.selectbox(
+        "drill into",
+        options=list(range(len(runs))),
+        format_func=_label,
+    )
+    if selected is None:
+        return
+    run_row = runs.iloc[selected]
+    run_date_iso = str(run_row["run_date"])
+    journal_path = _journal_path_for_run(DEFAULT_PAPER_DIR, run_date_iso)
+
+    # Fills sub-table.
+    st.subheader(
+        f"fills — {run_row['symbol']} | "
+        f"{run_row['start_date']} → {run_row['end_date']}"
+    )
+    fills = load_paper_fills(journal_path)
+    if fills.empty:
+        st.info(
+            "no fills in this run (or journal SQLite not found at "
+            f"{journal_path}; check the W6.5 cron ran and wrote it)."
+        )
+    else:
+        st.dataframe(fills, use_container_width=True, hide_index=True)
+
+    # Intents sub-table (incl. risk_rejected) for the audit view.
+    st.subheader(
+        f"intents — {run_row['symbol']} | "
+        f"{run_row['start_date']} → {run_row['end_date']}"
+    )
+    intents = load_paper_intents(journal_path)
+    if intents.empty:
+        st.info("no intents recorded")
+    else:
+        st.dataframe(intents, use_container_width=True, hide_index=True)
+
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
 
@@ -369,6 +487,7 @@ def render_equity_curves() -> None:
 PAGE_RENDERERS = {
     "Universe Status": render_universe_status,
     "Equity Curves": render_equity_curves,
+    "Paper Trade History": render_paper_trade_history,
 }
 
 
