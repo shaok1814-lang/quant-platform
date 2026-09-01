@@ -161,6 +161,7 @@ STRATEGY_REGISTRY: dict[str, str] = {
     "MA Cross (single)": "MACrossStrategy",
     "Factor Timing MA Cross (single)": "FactorTimingMACross",
     "TopN Mean Reversion (multi)": "TopNMeanReversionStrategy",
+    "Donchian Breakout (single)": "DonchianBreakoutStrategy",
 }
 
 
@@ -182,6 +183,10 @@ def _get_strategy_class(canonical_name: str) -> type:
         from research.strategies.topn_mean_reversion import TopNMeanReversionStrategy
 
         return TopNMeanReversionStrategy
+    if canonical_name == "DonchianBreakoutStrategy":
+        from research.strategies.donchian_breakout import DonchianBreakoutStrategy
+
+        return DonchianBreakoutStrategy
     raise ValueError(f"unknown strategy: {canonical_name}")
 
 
