@@ -29,10 +29,10 @@ def n_day_return(close: pd.Series, *, window: int = 20) -> FactorSeries:
     Returns:
         ``pd.Series`` aligned to ``close.index``:
 
-          * First ``window`` rows are NaN (shift warm-up).
-          * ``±inf`` rows (caused by past close == 0) are coerced to
-            NaN.
-          * ``name`` is ``"nret_{window}"``.
+            * First ``window`` rows are NaN (shift warm-up).
+            * ``±inf`` rows (caused by past close == 0) are coerced
+              to NaN.
+            * ``name`` is ``"nret_{window}"``.
 
     Raises:
         ValueError: if ``window < 1``.

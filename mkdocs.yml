@@ -103,6 +103,13 @@ plugins:
       lang:
         - en
         - zh
+  - autorefs:
+      # Bilingual site: the same Python class shows up on both
+      # docs/site/api-reference.md (zh) and docs/site/en/api-reference.md.
+      # Without resolve_closest, mkdocs_autorefs emits a WARNING for
+      # every duplicate. resolve_closest=true picks the closest URL
+      # (same-language preference), keeping the build silent and correct.
+      resolve_closest: true
   - mkdocstrings:
       default_handler: python
       handlers:

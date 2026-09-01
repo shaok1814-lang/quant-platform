@@ -102,9 +102,9 @@ def summarize_metrics(
     Returns:
         ``dict[str, float]`` with keys:
 
-          * ``"phase"`` — the input ``phase`` arg, verbatim.
-          * each metric in :data:`KEY_METRICS` + :data:`_AKK_WRAPPER_METRICS`
-            that is present in ``result.metrics_df``.
+            * ``"phase"`` — the input ``phase`` arg, verbatim.
+            * each metric in :data:`KEY_METRICS` + :data:`_AKK_WRAPPER_METRICS`
+              that is present in ``result.metrics_df``.
         Metrics whose cells are NaN / non-numeric are skipped (no key
         in the output).
 

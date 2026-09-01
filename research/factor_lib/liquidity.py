@@ -41,18 +41,18 @@ def turnover_ratio(
     Returns:
         ``pd.Series`` aligned to ``volume.index``:
 
-          * ``outstanding_share is None`` → all-NaN Series (the
-            factor library does NOT raise; absence of denominator
-            data is a known data-layer state, not a bug).
-          * ``outstanding_share[i] == 0`` or NaN → result[i] = NaN
-            (denominator undefined; division-by-zero silently
-            becomes NaN, not inf).
-          * ``volume[i] == 0`` → result[i] = 0 (valid: zero trades
-            that bar; zero turnover is meaningful information,
-            not a missing-data flag).
-          * ``name`` is always ``"turnover_ratio"`` regardless of
-            which branch fired (helps pipelines treat the column
-            uniformly).
+            * ``outstanding_share is None`` → all-NaN Series (the
+              factor library does NOT raise; absence of denominator
+              data is a known data-layer state, not a bug).
+            * ``outstanding_share[i] == 0`` or NaN → result[i] = NaN
+              (denominator undefined; division-by-zero silently
+              becomes NaN, not inf).
+            * ``volume[i] == 0`` → result[i] = 0 (valid: zero trades
+              that bar; zero turnover is meaningful information,
+              not a missing-data flag).
+            * ``name`` is always ``"turnover_ratio"`` regardless of
+              which branch fired (helps pipelines treat the column
+              uniformly).
 
     Note:
         This function intentionally does NOT call

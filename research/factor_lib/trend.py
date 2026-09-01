@@ -32,11 +32,11 @@ def ma_deviation(close: pd.Series, *, bar_window: int = 20) -> FactorSeries:
     Returns:
         ``pd.Series`` aligned to ``close.index``:
 
-          * First ``bar_window - 1`` rows are NaN (SMA warm-up).
-          * ``±inf`` rows (caused by SMA == 0) are coerced to NaN
-            so downstream consumers can mask them uniformly.
-          * ``name`` is ``"ma_dev_{bar_window}"`` so pipelines can
-            ``.melt`` directly without renaming.
+            * First ``bar_window - 1`` rows are NaN (SMA warm-up).
+            * ``±inf`` rows (caused by SMA == 0) are coerced to NaN
+              so downstream consumers can mask them uniformly.
+            * ``name`` is ``"ma_dev_{bar_window}"`` so pipelines can
+              ``.melt`` directly without renaming.
 
     Raises:
         ValueError: if ``bar_window < 1``.

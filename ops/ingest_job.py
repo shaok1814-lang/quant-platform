@@ -315,7 +315,16 @@ def ingest_window(
     Args:
         start_date: Inclusive first date.
         end_date: Inclusive last date.
-        Other kwargs: same as :func:`run_daily_ingest`.
+        duckdb_path: Path to the DuckDB file. ``None`` uses
+            :data:`DEFAULT_DUCKDB_PATH`.
+        universe_path: Path to ``config/universe.yaml``. ``None``
+            uses :data:`ops.universe.DEFAULT_UNIVERSE_PATH`.
+        fetcher: Injectable fetcher (defaults to
+            ``akshare.fetch_daily_bars_with_fallback``). Tests inject
+            a stub that returns a synthetic df without network.
+        notify_on_hard: If ``True`` (default), 钉聊 alert on HARD
+            quality failures. Tests set ``False`` so the alert
+            channel never fires accidentally.
 
     Returns:
         :class:`IngestReport` with ``start_date`` / ``end_date``
