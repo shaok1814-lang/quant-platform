@@ -1,10 +1,11 @@
-"""Tests for ``ops.scheduler.build_scheduler`` (W6.1.5).
+"""Tests for ``ops.scheduler.build_scheduler`` (W6.1.5 + W6.5).
 
-  * Verifies the cron job is registered with the right id, func,
-    and trigger parameters.
+  * Verifies the cron jobs are registered with the right ids,
+    funcs, and trigger parameters (daily ingest + weekly paper).
   * Verifies the ``start()`` method is NOT called as a side effect
     of ``build_scheduler`` (so the entry point is testable without
     spinning the loop).
+  * Verifies the weekly job can be disabled via ``enable_weekly_paper``.
   * Verifies ``python -m ops`` module-level behavior (does NOT
     enter the loop at import; only via ``main()``).
 
@@ -29,19 +30,57 @@ from ops.scheduler import (  # noqa: E402
     DEFAULT_HOUR,
     DEFAULT_MINUTE,
     DEFAULT_TZ,
+    DEFAULT_WEEKLY_DAY_OF_WEEK,
+    DEFAULT_WEEKLY_HOUR,
+    DEFAULT_WEEKLY_MINUTE,
     build_scheduler,
 )
 
 
 def test_build_scheduler_registers_daily_ingest_job() -> None:
-    """``build_scheduler`` registers one job, id ``daily_ingest``,
-    with the cron trigger at the default 18:00 Asia/Shanghai."""
+    """``build_scheduler`` registers the daily ingest job at 18:00
+    Asia/Shanghai (default)."""
     scheduler = build_scheduler()
-    jobs = scheduler.get_jobs()
-    assert len(jobs) == 1, f"expected 1 job, got {len(jobs)}"
-    job = jobs[0]
-    assert job.id == "daily_ingest"
+    jobs = {j.id: j for j in scheduler.get_jobs()}
+    assert "daily_ingest" in jobs, list(jobs)
+    job = jobs["daily_ingest"]
     assert isinstance(job.trigger, CronTrigger)
+
+
+def test_build_scheduler_registers_weekly_paper_job_by_default() -> None:
+    """W6.5: weekly paper-validation job registered at Sunday 9:00
+    Asia/Shanghai (default)."""
+    scheduler = build_scheduler()
+    jobs = {j.id: j for j in scheduler.get_jobs()}
+    assert "weekly_paper" in jobs, list(jobs)
+    job = jobs["weekly_paper"]
+    assert isinstance(job.trigger, CronTrigger)
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert DEFAULT_WEEKLY_DAY_OF_WEEK.lower() in fields["day_of_week"].lower()
+    assert str(DEFAULT_WEEKLY_HOUR) in fields["hour"]
+    assert str(DEFAULT_WEEKLY_MINUTE) in fields["minute"]
+
+
+def test_build_scheduler_disable_weekly_paper() -> None:
+    """``enable_weekly_paper=False`` removes the weekly job (only
+    daily ingest remains)."""
+    scheduler = build_scheduler(enable_weekly_paper=False)
+    jobs = {j.id for j in scheduler.get_jobs()}
+    assert jobs == {"daily_ingest"}
+
+
+def test_build_scheduler_custom_weekly_params() -> None:
+    """Custom weekly schedule params are reflected in the trigger."""
+    scheduler = build_scheduler(
+        weekly_day_of_week="fri",
+        weekly_hour=18,
+        weekly_minute=30,
+    )
+    weekly_job = next(j for j in scheduler.get_jobs() if j.id == "weekly_paper")
+    fields = {f.name: str(f) for f in weekly_job.trigger.fields}
+    assert "fri" in fields["day_of_week"].lower()
+    assert "18" in fields["hour"]
+    assert "30" in fields["minute"]
 
 
 def test_build_scheduler_does_not_start() -> None:
@@ -60,9 +99,9 @@ def test_build_scheduler_does_not_start() -> None:
 
 
 def test_build_scheduler_custom_hour_minute_tz() -> None:
-    """Custom schedule params are reflected in the cron trigger."""
+    """Custom daily schedule params are reflected in the cron trigger."""
     scheduler = build_scheduler(hour=23, minute=30, timezone="Asia/Tokyo")
-    job = scheduler.get_jobs()[0]
+    job = next(j for j in scheduler.get_jobs() if j.id == "daily_ingest")
     trigger = job.trigger
     # CronTrigger fields are private; access via the trigger's
     # ``fields`` collection (well-known APScheduler 3.x surface).
@@ -78,7 +117,7 @@ def test_build_scheduler_default_constants_match() -> None:
     accidental drift between the constants and the default
     parameter values)."""
     scheduler = build_scheduler()
-    job = scheduler.get_jobs()[0]
+    job = next(j for j in scheduler.get_jobs() if j.id == "daily_ingest")
     fields = {f.name: str(f) for f in job.trigger.fields}
     assert str(DEFAULT_HOUR) in fields["hour"]
     assert str(DEFAULT_MINUTE) in fields["minute"]
@@ -98,19 +137,17 @@ def test_main_import_does_not_enter_loop() -> None:
 
 
 def test_scheduler_with_max_instances_one_prevents_overlap() -> None:
-    """``max_instances=1`` is set so a long-running ingest cannot
-    spawn a second parallel run if the previous run hasn't
-    finished yet. APScheduler would queue the next fire on the
-    default thread pool until the previous returns."""
+    """``max_instances=1`` is set on both jobs so a long-running
+    ingest / weekly paper session cannot spawn a second parallel
+    run if the previous run hasn't finished yet."""
     scheduler = build_scheduler()
-    job = scheduler.get_jobs()[0]
-    assert job.max_instances == 1
+    for job in scheduler.get_jobs():
+        assert job.max_instances == 1, f"job {job.id} max_instances != 1"
 
 
 def test_scheduler_coalesce_disabled() -> None:
-    """``coalesce=False`` — a missed daily run is not back-filled
-    when the scheduler resumes after downtime (matches the
-    decision rationale in ``ops.scheduler`` module docstring)."""
+    """``coalesce=False`` on both jobs — missed runs are not
+    back-filled when the scheduler resumes after downtime."""
     scheduler = build_scheduler()
-    job = scheduler.get_jobs()[0]
-    assert job.coalesce is False
+    for job in scheduler.get_jobs():
+        assert job.coalesce is False, f"job {job.id} coalesce != False"
