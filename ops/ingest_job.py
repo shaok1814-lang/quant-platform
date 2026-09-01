@@ -192,7 +192,7 @@ def _notify_hard_failures(report: IngestReport) -> None:
     from ops import notify
 
     lines = [
-        f"target_date={report.target_date}",
+        f"target_date={report.start_date}",
         f"HARD quality failures: {len(hard_failures)} of {len(report.per_symbol)} symbols",
     ]
     for r in hard_failures:
@@ -201,7 +201,7 @@ def _notify_hard_failures(report: IngestReport) -> None:
         elif r.error:
             lines.append(f"- {r.symbol} ({r.sector}): {r.error}")
     notify.ding(
-        f"Ingest HARD quality failures ({report.target_date})",
+        f"Ingest HARD quality failures ({report.start_date})",
         "\n".join(lines),
     )
 

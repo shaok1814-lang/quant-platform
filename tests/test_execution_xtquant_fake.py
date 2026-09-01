@@ -110,7 +110,9 @@ def test_emit_on_trade_updates_order_and_records_trade() -> None:
     """Fill → order status 53 (FILLED) + trade in query_stock_trades."""
     t = FakeXtQuantTrader()
     t.connect()
-    oid = t.order_stock(None, "000001.SZ", t.STOCK_BUY, 100, t.FIX_PRICE, 10.0, order_remark="q:fill")
+    oid = t.order_stock(
+        None, "000001.SZ", t.STOCK_BUY, 100, t.FIX_PRICE, 10.0, order_remark="q:fill"
+    )
 
     fired: list[str] = []
 
@@ -163,8 +165,11 @@ def test_set_asset_and_positions_propagate_to_query() -> None:
     t = FakeXtQuantTrader()
     t.connect()
     asset = XtAsset(
-        account_id="x", cash=900_000.0, frozen_cash=0.0,
-        market_value=10_500.0, total_asset=910_500.0,
+        account_id="x",
+        cash=900_000.0,
+        frozen_cash=0.0,
+        market_value=10_500.0,
+        total_asset=910_500.0,
     )
     t.set_asset(asset)
     positions = [

@@ -85,7 +85,7 @@ __all__ = [
 
 # A bar is a single OHLCV row as the runner hands it to the strategy.
 # Dict shape (not pd.Series) keeps the strategy callable trivial.
-Bar = dict
+Bar = dict[str, Any]
 
 
 # Strategy signature (multi-symbol, Phase 4):
@@ -162,7 +162,7 @@ class PaperSessionReport:
     max_drawdown_pct: float
     per_symbol: dict[str, dict[str, int]] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, int | float | str | dict]:
+    def to_dict(self) -> dict[str, int | float | str | dict[str, Any]]:
         """Render as a JSON-serializable dict for dashboards."""
         return {
             "started_at": self.started_at.isoformat(),
@@ -184,7 +184,7 @@ class PaperSessionReport:
 
 def _row_to_bar(row: pd.Series, ts: datetime) -> Bar:
     """Convert a DataFrame row into the Bar dict the strategy sees."""
-    return {
+    bar: Bar = {
         "date": ts,
         "open": float(row.get("open", 0.0)),
         "high": float(row.get("high", 0.0)),
@@ -192,6 +192,7 @@ def _row_to_bar(row: pd.Series, ts: datetime) -> Bar:
         "close": float(row.get("close", 0.0)),
         "volume": float(row.get("volume", 0.0)),
     }
+    return bar
 
 
 def _to_bars_per_symbol(
@@ -332,10 +333,10 @@ def run_paper_session(
     if not is_bridge:
         # Plain callable: wrap under a default symbol so
         # ``_to_bars_per_symbol`` accepts pd.DataFrame input.
-        bridge_symbol_for_data = _DEFAULT_SYMBOL
-        strategy = _adapt_plain_strategy(strategy)
+        bridge_symbol_for_data: str = _DEFAULT_SYMBOL
+        strategy = _adapt_plain_strategy(strategy)  # type: ignore[arg-type]
     else:
-        bridge_symbol_for_data = getattr(strategy, "_fixed_symbol", None)
+        bridge_symbol_for_data = getattr(strategy, "_fixed_symbol", None) or _DEFAULT_SYMBOL
 
     bars_per_symbol = _to_bars_per_symbol(
         data,
@@ -638,7 +639,8 @@ def _make_fill_record(
     so test fakes without ``make_fill_record`` still work.
     """
     if hasattr(adapter, "make_fill_record"):
-        return adapter.make_fill_record(intent, report)
+        result = adapter.make_fill_record(intent, report)
+        return result  # type: ignore[no-any-return]
     if report.avg_fill_price is None or report.filled_quantity == 0:
         return None
     import uuid

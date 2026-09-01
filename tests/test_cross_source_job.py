@@ -79,6 +79,7 @@ def _make_stub_fetcher(
             symbols (mirror the real fetcher's
             ``FetcherError`` semantics).
     """
+
     def _fetch(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         if symbol not in mapper:
             raise fetcher_error_cls(f"stub {fetcher_name}: no data for {symbol}")

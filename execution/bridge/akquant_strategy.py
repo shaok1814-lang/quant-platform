@@ -129,7 +129,7 @@ class AkquantStrategyCallable:
         # on the dynamic class body so they win the MRO.
         self._strategy = self._build_strategy_instance()
         # Alias for use inside override methods.
-        self._strategy._bridge = self  # type: ignore[attr-defined]
+        self._strategy._bridge = self
 
         # Capture state (reset per __call__).
         self._captured_intents: list[OrderIntent] = []
@@ -204,7 +204,7 @@ class AkquantStrategyCallable:
             return bridge_ref._get_or_create_position(sym)
 
         cls = type(self._strategy)
-        cls.position = property(_position_getter)  # type: ignore[attr-defined]
+        cls.position = property(_position_getter)
 
     def _get_or_create_position(self, symbol: str) -> FakePosition:
         """Lazy-init the FakePosition for ``symbol``."""
@@ -278,7 +278,7 @@ class AkquantStrategyCallable:
             latest = bars[-1]
             synthetic_bar = self._make_bar(symbol, latest)
             try:
-                self._strategy.on_bar(synthetic_bar)  # type: ignore[attr-defined]
+                self._strategy.on_bar(synthetic_bar)
             except Exception:
                 import loguru
 
@@ -450,7 +450,7 @@ class AkquantStrategyCallable:
                 return bridge_ref._empty_history_df()
             return history.tail(count).reset_index(drop=True)
 
-        self._strategy.get_history_df = _get_history_df  # type: ignore[attr-defined]
+        self._strategy.get_history_df = _get_history_df
 
     def _make_bar(self, symbol: str, latest: dict[str, Any]) -> Any:
         """Construct an AKQuant Bar-shaped object from a runner bar dict.

@@ -69,7 +69,8 @@ def _populate_dummy_duckdb(
             )
         )
     df = pd.DataFrame(
-        rows, columns=["date", "open", "high", "low", "close", "volume"],
+        rows,
+        columns=["date", "open", "high", "low", "close", "volume"],
     )
     df["date"] = pd.to_datetime(df["date"])
     df["amount"] = df["volume"] * df["close"] * 0.001
@@ -170,7 +171,8 @@ def test_run_weekly_paper_session_e2e(tmp_path: Path) -> None:
 
 
 def test_run_weekly_paper_session_uses_default_output_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When ``output_dir`` is ``None``, the module's :data:`DEFAULT_OUTPUT_DIR`
     is used. Verifies the indirection by monkey-patching it."""
@@ -178,7 +180,8 @@ def test_run_weekly_paper_session_uses_default_output_dir(
     _populate_dummy_duckdb(db, symbol=DEFAULT_SYMBOL, n_trading_days=20)
     custom_out = tmp_path / "custom_reports"
     monkeypatch.setattr(
-        "ops.weekly_paper_job.DEFAULT_OUTPUT_DIR", custom_out,
+        "ops.weekly_paper_job.DEFAULT_OUTPUT_DIR",
+        custom_out,
     )
     weekly = run_weekly_paper_session(
         duckdb_path=db,
@@ -271,7 +274,8 @@ def test_notify_kill_switch_calls_ding_with_stable_body(
 
 
 def test_run_weekly_paper_session_kill_switch_fires_ding(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """End-to-end: when ``max_drawdown_pct >= 5%`` (e.g. via a
     manually-set adapter HWM), the kill-switch alert is sent.
@@ -291,6 +295,7 @@ def test_run_weekly_paper_session_kill_switch_fires_ding(
     monkeypatch.setattr("ops.notify.ding", fake_ding)
 
     from execution.brokers.akquant_paper import AkquantPaperAdapter
+
     orig_init = AkquantPaperAdapter.__init__
 
     def forced_hwm_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
@@ -312,7 +317,8 @@ def test_run_weekly_paper_session_kill_switch_fires_ding(
 
 
 def test_run_weekly_paper_session_no_kill_switch_no_ding(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Healthy run (no drawdown) → no 钉聊 alert, kill_switch_fired=False."""
     db = tmp_path / "daily.duckdb"

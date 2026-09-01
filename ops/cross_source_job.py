@@ -450,11 +450,7 @@ def run_cross_source_check(
     t0 = time.monotonic()
     universe = load_universe(universe_path)
     ak_fetch = akshare_fetcher if akshare_fetcher is not None else _default_akshare_fetcher()
-    bs_fetch = (
-        baostock_fetcher
-        if baostock_fetcher is not None
-        else _default_baostock_fetcher()
-    )
+    bs_fetch = baostock_fetcher if baostock_fetcher is not None else _default_baostock_fetcher()
 
     # akshare takes YYYYMMDD; baostock conversion happens inside
     # ``_diff_one_symbol``. Window: target date only — we want a

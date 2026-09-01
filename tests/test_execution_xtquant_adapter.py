@@ -108,7 +108,9 @@ def test_place_order_encodes_remark_with_client_id_prefix() -> None:
     adapter, trader = _build_adapter()
     adapter.connect()
     rep = adapter.place_order(
-        OrderIntent(client_order_id="cid-abc", symbol="000001", side="buy", quantity=100, price=10.0),
+        OrderIntent(
+            client_order_id="cid-abc", symbol="000001", side="buy", quantity=100, price=10.0
+        ),
     )
     assert rep.status == "submitted"
     assert rep.broker_order_id is not None
@@ -124,7 +126,9 @@ def test_place_order_idempotent_same_client_id() -> None:
     """Re-submitting the same intent returns the same broker_order_id."""
     adapter, trader = _build_adapter()
     adapter.connect()
-    intent = OrderIntent(client_order_id="dup", symbol="000001", side="buy", quantity=100, price=10.0)
+    intent = OrderIntent(
+        client_order_id="dup", symbol="000001", side="buy", quantity=100, price=10.0
+    )
     r1 = adapter.place_order(intent)
     r2 = adapter.place_order(intent)
     assert r1.broker_order_id == r2.broker_order_id
@@ -197,9 +201,7 @@ def test_consume_events_handles_disconnected_event() -> None:
     # (with backoff_base_s=0.01 in _build_adapter, it completes
     # within milliseconds). Verify it actually retried by
     # checking connect_count went up.
-    assert trader.connect_count == 2, (
-        "consume_events should have triggered reconnect"
-    )
+    assert trader.connect_count == 2, "consume_events should have triggered reconnect"
     # After reconnect, orders are accepted again.
     rep2 = adapter.place_order(
         OrderIntent(client_order_id="cid-2", symbol="000001", side="buy", quantity=100, price=10.0),
@@ -290,8 +292,11 @@ def _make_asset(total: float, cash: float) -> object:
     from execution.brokers.xtquant_models import XtAsset
 
     return XtAsset(
-        account_id="x", cash=cash, frozen_cash=0.0,
-        market_value=total - cash, total_asset=total,
+        account_id="x",
+        cash=cash,
+        frozen_cash=0.0,
+        market_value=total - cash,
+        total_asset=total,
         available_cash=cash,
     )
 
@@ -300,8 +305,10 @@ def _make_position(stock_code: str, volume: int, avg_price: float) -> object:
     from execution.brokers.xtquant_models import XtPosition
 
     return XtPosition(
-        stock_code=stock_code, volume=volume,
-        can_use_volume=volume, avg_price=avg_price,
+        stock_code=stock_code,
+        volume=volume,
+        can_use_volume=volume,
+        avg_price=avg_price,
         market_value=volume * avg_price,
     )
 
@@ -384,6 +391,7 @@ def test_reconnect_exhausted_notify_fn_exception_does_not_crash() -> None:
     """A buggy ``notify_fn`` (钉聊 webhook down) is swallowed.
     Reconnect exhaustion path must NOT cascade into the
     reconciliation loop."""
+
     def bad_notify(title: str, body: str) -> None:
         raise RuntimeError("钉聊 webhook down")
 
@@ -425,8 +433,11 @@ def test_drop_count_below_threshold_does_not_fire() -> None:
     # emit_on_trade against.
     rep = adapter.place_order(
         OrderIntent(
-            client_order_id="c1", symbol="000001",
-            side="buy", quantity=100, price=10.0,
+            client_order_id="c1",
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.0,
         ),
     )
     broker_id = int(rep.broker_order_id)
@@ -470,8 +481,11 @@ def test_drop_count_threshold_fires_notify_once() -> None:
     adapter.connect()
     rep = adapter.place_order(
         OrderIntent(
-            client_order_id="c1", symbol="000001",
-            side="buy", quantity=100, price=10.0,
+            client_order_id="c1",
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.0,
         ),
     )
     broker_id = int(rep.broker_order_id)
@@ -521,8 +535,11 @@ def test_drop_count_threshold_disabled_when_zero() -> None:
     adapter.connect()
     rep = adapter.place_order(
         OrderIntent(
-            client_order_id="c1", symbol="000001",
-            side="buy", quantity=100, price=10.0,
+            client_order_id="c1",
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.0,
         ),
     )
     broker_id = int(rep.broker_order_id)
@@ -541,6 +558,7 @@ def test_drop_count_threshold_disabled_when_zero() -> None:
 
 def test_drop_count_notify_fn_exception_does_not_crash() -> None:
     """Bad ``notify_fn`` on drop threshold is swallowed (best-effort)."""
+
     def bad_notify(title: str, body: str) -> None:
         raise RuntimeError("钉聊 down")
 
@@ -552,8 +570,11 @@ def test_drop_count_notify_fn_exception_does_not_crash() -> None:
     adapter.connect()
     rep = adapter.place_order(
         OrderIntent(
-            client_order_id="c1", symbol="000001",
-            side="buy", quantity=100, price=10.0,
+            client_order_id="c1",
+            symbol="000001",
+            side="buy",
+            quantity=100,
+            price=10.0,
         ),
     )
     broker_id = int(rep.broker_order_id)

@@ -165,8 +165,7 @@ def test_intent_resubmission_updates_risk_decision(tmp_path: Path) -> None:
 
     with sqlite3.connect(db) as con:
         row = con.execute(
-            "SELECT risk_decision, risk_reason FROM order_intent "
-            "WHERE client_order_id = 'c1'"
+            "SELECT risk_decision, risk_reason FROM order_intent WHERE client_order_id = 'c1'"
         ).fetchone()
     assert row[0] == "reject"
     assert "daily_trade_count" in row[1]
@@ -187,10 +186,15 @@ def test_snapshot_upsert_on_same_timestamp(tmp_path: Path) -> None:
     j = PaperJournal(db)
     ts = datetime(2024, 9, 2, 15, 0)
     j.record_snapshot(_snap(ts))
-    j.record_snapshot(EquitySnapshot(
-        timestamp=ts, cash=900_000.0, positions_value=0.0,
-        total_equity=900_000.0, drawdown_pct=0.10,
-    ))
+    j.record_snapshot(
+        EquitySnapshot(
+            timestamp=ts,
+            cash=900_000.0,
+            positions_value=0.0,
+            total_equity=900_000.0,
+            drawdown_pct=0.10,
+        )
+    )
 
     import sqlite3
 
@@ -282,4 +286,4 @@ def test_compare_paper_only_and_live_only_counts(tmp_path: Path) -> None:
     res = paper.compare_to(live, max_deviation_pct=5.0)
     assert res.passed is False
     assert res.n_paper_only == 2  # c1, c2 in paper not live
-    assert res.n_live_only == 1   # c3 in live not paper
+    assert res.n_live_only == 1  # c3 in live not paper

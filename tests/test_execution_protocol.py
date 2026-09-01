@@ -56,7 +56,11 @@ def test_order_intent_frozen() -> None:
 def test_order_intent_defaults() -> None:
     """OrderType default is 'limit'; reason default is empty string."""
     intent = OrderIntent(
-        client_order_id="x", symbol="000001", side="buy", quantity=100, price=10.0,
+        client_order_id="x",
+        symbol="000001",
+        side="buy",
+        quantity=100,
+        price=10.0,
     )
     assert intent.order_type == "limit"
     assert intent.reason == ""
@@ -66,16 +70,22 @@ def test_order_intent_defaults() -> None:
 def test_order_intent_side_literal(side: str) -> None:
     """Side Literal allows both 'buy' and 'sell'."""
     intent = OrderIntent(
-        client_order_id="x", symbol="000001", side=side,  # type: ignore[arg-type]
-        quantity=100, price=10.0,
+        client_order_id="x",
+        symbol="000001",
+        side=side,  # type: ignore[arg-type]
+        quantity=100,
+        price=10.0,
     )
     assert intent.side == side
 
 
 def test_execution_report_frozen() -> None:
     rep = ExecutionReport(
-        client_order_id="x", status="filled",
-        broker_order_id="b1", filled_quantity=100, avg_fill_price=10.0,
+        client_order_id="x",
+        status="filled",
+        broker_order_id="b1",
+        filled_quantity=100,
+        avg_fill_price=10.0,
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
         rep.status = "rejected"  # type: ignore[misc]

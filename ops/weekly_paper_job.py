@@ -217,11 +217,12 @@ def run_weekly_paper_session(
 
     # Per-rotation journal so multiple weeks coexist. Path:
     # ``data/paper_reports/journal_<date>.sqlite``.
-    from execution import (
-        AkquantPaperAdapter,
-        PaperJournal,
-        run_paper_session,
-    )
+    from execution import PaperJournal, run_paper_session
+
+    # AkquantPaperAdapter is lazy-imported via execution.__getattr__
+    # (heavy AKQuant dependency); import it directly here so mypy
+    # sees the concrete class type instead of ``object``.
+    from execution.brokers.akquant_paper import AkquantPaperAdapter
 
     journal_path = out_dir / f"journal_{started.date().isoformat()}.sqlite"
     adapter = AkquantPaperAdapter()

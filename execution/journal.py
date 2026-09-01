@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from datetime import date as date_cls
 from datetime import datetime
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from execution.protocol import (
     EquitySnapshot,
@@ -404,7 +404,7 @@ class PaperJournal:
                 ``bar_timestamp`` starts with ``YYYY-MM-DD``.
         """
         where = ""
-        params: tuple = ()
+        params: tuple[Any, ...] = ()
         if day is not None:
             where = " WHERE substr(bar_timestamp, 1, 10) = ?"
             params = (day.isoformat(),)
@@ -418,10 +418,10 @@ class PaperJournal:
             OrderIntent(
                 client_order_id=r[0],
                 symbol=r[2],
-                side=r[3],  # type: ignore[arg-type]
+                side=r[3],
                 quantity=r[4],
                 price=r[5],
-                order_type=r[6],  # type: ignore[arg-type]
+                order_type=r[6],
                 reason=r[7] or "",
             )
             for r in rows
@@ -430,7 +430,7 @@ class PaperJournal:
     def query_fills(self, day: date_cls | None = None) -> list[Fill]:
         """Read back Fill rows, optionally filtered by trade date."""
         where = ""
-        params: tuple = ()
+        params: tuple[Any, ...] = ()
         if day is not None:
             where = " WHERE substr(timestamp, 1, 10) = ?"
             params = (day.isoformat(),)
@@ -447,7 +447,7 @@ class PaperJournal:
                 client_order_id=r[1],
                 broker_order_id=r[2],
                 symbol=r[3],
-                side=r[4],  # type: ignore[arg-type]
+                side=r[4],
                 quantity=r[5],
                 price=r[6],
                 commission=r[7],

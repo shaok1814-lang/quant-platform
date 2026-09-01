@@ -33,6 +33,7 @@ disjoint, which is the only safe pattern in Python with the GIL.
 from __future__ import annotations
 
 import queue
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -220,7 +221,7 @@ class XtQuantTradeCallback:
         self,
         event_queue: queue.Queue[BrokerEvent],
         *,
-        on_drop: callable[[BrokerEvent], None] | None = None,
+        on_drop: Callable[[BrokerEvent], None] | None = None,
     ) -> None:
         self._queue = event_queue
         self._on_drop = on_drop

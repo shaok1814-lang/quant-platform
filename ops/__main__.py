@@ -61,7 +61,8 @@ def main() -> int:
         default=True,
     )
     weekly_day = os.environ.get(
-        "OPS_WEEKLY_PAPER_DAY", DEFAULT_WEEKLY_DAY_OF_WEEK,
+        "OPS_WEEKLY_PAPER_DAY",
+        DEFAULT_WEEKLY_DAY_OF_WEEK,
     )
     weekly_hour = int(
         os.environ.get("OPS_WEEKLY_PAPER_HOUR", DEFAULT_WEEKLY_HOUR),

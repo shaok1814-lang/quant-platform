@@ -330,10 +330,7 @@ def _read_journal_table(
     if day is not None:
         where = f" WHERE substr({date_column}, 1, 10) = ?"
         params = (day.isoformat(),)
-    sql = (
-        f"SELECT {', '.join(columns)} FROM {table}{where} "
-        f"ORDER BY {date_column}"
-    )
+    sql = f"SELECT {', '.join(columns)} FROM {table}{where} ORDER BY {date_column}"
     try:
         with sqlite3.connect(str(db_path)) as con:
             rows = con.execute(sql, params).fetchall()
@@ -371,17 +368,17 @@ def load_paper_fills(
         journal_path,
         table="fill",
         columns=[
-                "fill_id",
-                "client_order_id",
-                "broker_order_id",
-                "symbol",
-                "side",
-                "quantity",
-                "price",
-                "commission",
-                "stamp_tax",
-                "timestamp",
-            ],
+            "fill_id",
+            "client_order_id",
+            "broker_order_id",
+            "symbol",
+            "side",
+            "quantity",
+            "price",
+            "commission",
+            "stamp_tax",
+            "timestamp",
+        ],
         date_column="timestamp",
         day=day,
     )
@@ -414,17 +411,17 @@ def load_paper_intents(
         journal_path,
         table="order_intent",
         columns=[
-                "client_order_id",
-                "bar_timestamp",
-                "symbol",
-                "side",
-                "quantity",
-                "price",
-                "order_type",
-                "reason",
-                "risk_decision",
-                "risk_reason",
-            ],
+            "client_order_id",
+            "bar_timestamp",
+            "symbol",
+            "side",
+            "quantity",
+            "price",
+            "order_type",
+            "reason",
+            "risk_decision",
+            "risk_reason",
+        ],
         date_column="bar_timestamp",
         day=day,
     )

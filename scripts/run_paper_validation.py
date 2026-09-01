@@ -314,7 +314,8 @@ def _load_strategy_class(path: str) -> type:
     module_path, _, attr = path.rpartition(".")
     if not module_path:
         raise ValueError(f"--strategy must be a fully-qualified path; got {path!r}")
-    return getattr(importlib.import_module(module_path), attr)
+    cls: type = getattr(importlib.import_module(module_path), attr)
+    return cls
 
 
 DEFAULT_SYMBOL = "000001"

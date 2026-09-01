@@ -269,6 +269,7 @@ class _TwoSymbolBuyStrategy:
     the intents pass risk. The exact percentages don't matter for
     the e2e flow test — what matters is that each emits with its
     own symbol."""
+
     PCT_A: float = 0.09
     PCT_B: float = 0.09
 

@@ -45,15 +45,21 @@ from execution.risk import (  # noqa: E402
 
 def _buy(qty: int = 100, price: float = 10.0) -> OrderIntent:
     return OrderIntent(
-        client_order_id="x", symbol="000001", side="buy",
-        quantity=qty, price=price,
+        client_order_id="x",
+        symbol="000001",
+        side="buy",
+        quantity=qty,
+        price=price,
     )
 
 
 def _sell(qty: int = 100, price: float = 10.0) -> OrderIntent:
     return OrderIntent(
-        client_order_id="y", symbol="000001", side="sell",
-        quantity=qty, price=price,
+        client_order_id="y",
+        symbol="000001",
+        side="sell",
+        quantity=qty,
+        price=price,
     )
 
 
@@ -108,7 +114,9 @@ def test_position_cap_sell_always_allows() -> None:
 def test_position_cap_disabled_allows() -> None:
     """cfg.enabled=False → Allow regardless of size."""
     cfg = RiskConfig(max_position_pct=0.10, enabled=False)
-    big = OrderIntent(client_order_id="x", symbol="000001", side="buy", quantity=999_999, price=10.0)
+    big = OrderIntent(
+        client_order_id="x", symbol="000001", side="buy", quantity=999_999, price=10.0
+    )
     decision = check_position_cap(big, 0, 1_000_000.0, cfg)
     assert isinstance(decision, Allow)
 

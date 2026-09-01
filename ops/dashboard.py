@@ -442,10 +442,7 @@ def render_paper_trade_history() -> None:
     # at a glance.
     def _label(idx: int) -> str:
         row = runs.iloc[idx]
-        return (
-            f"{row['run_date']} | {row['symbol']} | "
-            f"fills={int(row['n_filled'])}"
-        )
+        return f"{row['run_date']} | {row['symbol']} | fills={int(row['n_filled'])}"
 
     selected = st.selectbox(
         "drill into",
@@ -459,10 +456,7 @@ def render_paper_trade_history() -> None:
     journal_path = _journal_path_for_run(DEFAULT_PAPER_DIR, run_date_iso)
 
     # Fills sub-table.
-    st.subheader(
-        f"fills — {run_row['symbol']} | "
-        f"{run_row['start_date']} → {run_row['end_date']}"
-    )
+    st.subheader(f"fills — {run_row['symbol']} | {run_row['start_date']} → {run_row['end_date']}")
     fills = load_paper_fills(journal_path)
     if fills.empty:
         st.info(
@@ -473,10 +467,7 @@ def render_paper_trade_history() -> None:
         st.dataframe(fills, use_container_width=True, hide_index=True)
 
     # Intents sub-table (incl. risk_rejected) for the audit view.
-    st.subheader(
-        f"intents — {run_row['symbol']} | "
-        f"{run_row['start_date']} → {run_row['end_date']}"
-    )
+    st.subheader(f"intents — {run_row['symbol']} | {run_row['start_date']} → {run_row['end_date']}")
     intents = load_paper_intents(journal_path)
     if intents.empty:
         st.info("no intents recorded")
