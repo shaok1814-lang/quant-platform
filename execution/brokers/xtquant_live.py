@@ -81,6 +81,7 @@ DEFAULT_CALLBACK_QUEUE_SIZE: Final[int] = 10_000
 DEFAULT_RECONNECT_MAX_ATTEMPTS: Final[int] = 5
 DEFAULT_RECONNECT_BACKOFF_BASE_S: Final[float] = 2.0
 DEFAULT_WATCHDOG_SECONDS: Final[float] = 30.0
+DEFAULT_DROP_NOTIFY_THRESHOLD: Final[int] = 100
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +188,8 @@ class XtQuantLiveAdapter:
         watchdog_seconds: float = DEFAULT_WATCHDOG_SECONDS,
         trader_factory: Callable[..., Any] | None = None,
         account_factory: Callable[..., Any] | None = None,
+        notify_fn: Callable[[str, str], None] | None = None,
+        drop_notify_threshold: int = DEFAULT_DROP_NOTIFY_THRESHOLD,
     ) -> None:
         self._path = path
         self._session_id = session_id
@@ -195,6 +198,13 @@ class XtQuantLiveAdapter:
         self._reconnect_max_attempts = reconnect_max_attempts
         self._reconnect_backoff_base_s = reconnect_backoff_base_s
         self._watchdog_seconds = watchdog_seconds
+        self._notify_fn = notify_fn
+        self._drop_notify_threshold = max(0, drop_notify_threshold)
+        # Once-per-condition flag for the drop-count alert (mirrors
+        # the runner's kill-switch ``flip 0→1`` semantics in W7.1
+        # Phase 3): we alert ONCE per adapter lifetime, not per
+        # bar that observes the threshold crossed.
+        self._drop_notified = False
 
         # Cross-thread event queue. Callbacks push; main thread
         # drains via ``consume_events``.
@@ -478,6 +488,13 @@ class XtQuantLiveAdapter:
         On DisconnectedEvent: trigger the reconnect procedure
         (with exponential backoff). Refuse new orders until
         reconnect succeeds.
+
+        On drop_count crossing ``drop_notify_threshold`` after
+        the drain: fire :attr:`_notify_fn` once (idempotent via
+        ``_drop_notified`` flag), like the runner's kill-switch
+        flip-0→1 semantics. The flag is never reset — a single
+        alert per adapter lifetime is the right operator-visibility
+        tradeoff (钉聊 spam is the failure mode).
         """
         events: list[BrokerEvent] = []
         for _ in range(max_events):
@@ -487,6 +504,33 @@ class XtQuantLiveAdapter:
                 break
             events.append(event)
             self._apply_event(event)
+        # Drop-count check AFTER the drain so we report the
+        # post-drain accumulated count (which is what the runner
+        # will see on this bar). Threshold-crossing fires the
+        # alert once per adapter lifetime.
+        if (
+            self._drop_notify_threshold > 0
+            and not self._drop_notified
+            and self._callback.drop_count >= self._drop_notify_threshold
+        ):
+            self._drop_notified = True
+            if self._notify_fn is not None:
+                try:
+                    self._notify_fn(
+                        f"XtQuant event drop count > {self._drop_notify_threshold}"
+                        f" ({self._account_id})",
+                        (
+                            f"event=event_drop_threshold\n"
+                            f"drop_count={self._callback.drop_count}\n"
+                            f"threshold={self._drop_notify_threshold}\n"
+                            f"queue_size={self._event_queue.maxsize}\n"
+                            f"account_id={self._account_id}\n"
+                            f"session_id={self._session_id}\n"
+                            f"timestamp={utcnow().isoformat()}"
+                        ),
+                    )
+                except Exception:  # pragma: no cover -- best-effort
+                    logger.exception("notify_fn raised on drop threshold")
         return events
 
     def _apply_event(self, event: BrokerEvent) -> None:
@@ -575,6 +619,26 @@ class XtQuantLiveAdapter:
             "adapter now refuses new orders",
             n=self._reconnect_max_attempts,
         )
+        # W7.1 Phase 5: notify the operator that the live
+        # session lost the broker connection permanently. Best-
+        # effort — ``notify_fn`` raising must NOT cascade into
+        # the runner / reconciliation loop (CLAUDE.md 「数据可靠
+        # > 单点失败断整个系统」).
+        if self._notify_fn is not None:
+            try:
+                self._notify_fn(
+                    f"XtQuant reconnect exhausted ({self._account_id})",
+                    (
+                        f"event=reconnect_exhausted\n"
+                        f"attempts={self._reconnect_max_attempts}\n"
+                        f"backoff_base_s={self._reconnect_backoff_base_s}\n"
+                        f"account_id={self._account_id}\n"
+                        f"session_id={self._session_id}\n"
+                        f"timestamp={utcnow().isoformat()}"
+                    ),
+                )
+            except Exception:  # pragma: no cover -- best-effort
+                logger.exception("notify_fn raised on reconnect exhausted")
 
     # ---------- Watchdog ----------
 

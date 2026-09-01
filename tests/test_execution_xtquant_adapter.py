@@ -304,3 +304,267 @@ def _make_position(stock_code: str, volume: int, avg_price: float) -> object:
         can_use_volume=volume, avg_price=avg_price,
         market_value=volume * avg_price,
     )
+
+
+# ---------------------------------------------------------------------------
+# notify_fn: reconnect exhausted + event drop threshold (W7.1 Phase 5)
+# ---------------------------------------------------------------------------
+
+
+def test_reconnect_exhausted_fires_notify() -> None:
+    """When reconnect attempts exhaust, ``notify_fn`` is invoked
+    once with a stable body."""
+    captured: list[tuple[str, str]] = []
+
+    def my_notify(title: str, body: str) -> None:
+        captured.append((title, body))
+
+    adapter, trader = _build_adapter(
+        reconnect_max_attempts=2,
+        reconnect_backoff_base_s=0.001,
+        notify_fn=my_notify,
+    )
+    adapter.connect()
+    # Make every reconnect attempt fail.
+    trader.fail_next_connect = True
+    # We need it to fail every time, not just once. The fake
+    # resets ``fail_next_connect`` after one failure; flip it
+    # back ON right before the reconnect loop reads it. Easiest
+    # way: keep setting it back True in a tight loop is fragile;
+    # instead, monkey-patch the connect method directly.
+    real_connect = trader.connect
+
+    def always_fail() -> int:
+        trader.fail_next_connect = True
+        return real_connect()
+
+    trader.connect = always_fail  # type: ignore[method-assign]
+
+    # Simulate TCP drop — adapter will attempt reconnect, fail 2x.
+    trader.emit_on_disconnected()
+    # Drain the DisconnectedEvent to trigger _on_disconnected.
+    adapter.consume_events()
+
+    assert len(captured) == 1, captured
+    title, body = captured[0]
+    assert "reconnect exhausted" in title.lower()
+    assert "test-acct" in title
+    # Stable body fields (Phase 5 parsers rely on these).
+    assert "event=reconnect_exhausted" in body
+    assert "attempts=2" in body
+    assert "account_id=test-acct" in body
+    assert "timestamp=" in body
+    # Adapter is now refusing orders.
+    assert adapter._refusing_orders is True
+
+
+def test_reconnect_exhausted_no_notify_fn_does_not_crash() -> None:
+    """With ``notify_fn=None`` (default), reconnect exhaustion logs
+    but does NOT raise. Adapter stays in refusing state."""
+    adapter, trader = _build_adapter(
+        reconnect_max_attempts=1,
+        reconnect_backoff_base_s=0.001,
+    )
+    adapter.connect()
+    real_connect = trader.connect
+
+    def always_fail() -> int:
+        trader.fail_next_connect = True
+        return real_connect()
+
+    trader.connect = always_fail  # type: ignore[method-assign]
+
+    trader.emit_on_disconnected()
+    # No exception → runner / reconciliation loop continues.
+    adapter.consume_events()
+    assert adapter._refusing_orders is True
+
+
+def test_reconnect_exhausted_notify_fn_exception_does_not_crash() -> None:
+    """A buggy ``notify_fn`` (钉聊 webhook down) is swallowed.
+    Reconnect exhaustion path must NOT cascade into the
+    reconciliation loop."""
+    def bad_notify(title: str, body: str) -> None:
+        raise RuntimeError("钉聊 webhook down")
+
+    adapter, trader = _build_adapter(
+        reconnect_max_attempts=1,
+        reconnect_backoff_base_s=0.001,
+        notify_fn=bad_notify,
+    )
+    adapter.connect()
+    real_connect = trader.connect
+
+    def always_fail() -> int:
+        trader.fail_next_connect = True
+        return real_connect()
+
+    trader.connect = always_fail  # type: ignore[method-assign]
+
+    trader.emit_on_disconnected()
+    # RuntimeError in notify_fn is swallowed; adapter still
+    # ends up in refusing state.
+    adapter.consume_events()
+    assert adapter._refusing_orders is True
+
+
+def test_drop_count_below_threshold_does_not_fire() -> None:
+    """Below the configured ``drop_notify_threshold``, no alert."""
+    captured: list[tuple[str, str]] = []
+
+    def my_notify(title: str, body: str) -> None:
+        captured.append((title, body))
+
+    adapter, trader = _build_adapter(
+        callback_queue_size=3,  # tiny queue
+        drop_notify_threshold=10_000,  # way above what we'll hit
+        notify_fn=my_notify,
+    )
+    adapter.connect()
+    # Place + fill once so the fake book has an order we can
+    # emit_on_trade against.
+    rep = adapter.place_order(
+        OrderIntent(
+            client_order_id="c1", symbol="000001",
+            side="buy", quantity=100, price=10.0,
+        ),
+    )
+    broker_id = int(rep.broker_order_id)
+
+    # Emit enough trades to fill the queue + trigger drops. Each
+    # ``emit_on_trade`` may push 1 or 2 events (trade + optional
+    # order-status update), so we don't pin the exact drop count
+    # — only that drops > 0 (something was dropped) AND threshold
+    # is NOT crossed.
+    for i in range(20):
+        trader.emit_on_trade(
+            order_id=broker_id,
+            stock_code="000001.SZ",
+            direction=trader._STOCK_BUY,
+            volume=1,
+            price=10.0 + i * 0.01,
+        )
+
+    # The queue still has 3 items; consume them.
+    drained = adapter.consume_events(max_events=100)
+    assert len(drained) == 3
+    # drop_count was hit, but threshold not crossed.
+    assert adapter.drop_count > 0
+    assert adapter.drop_count < 10_000
+    assert captured == []
+
+
+def test_drop_count_threshold_fires_notify_once() -> None:
+    """When drop_count crosses ``drop_notify_threshold``, notify
+    fires exactly once (idempotent across subsequent drains)."""
+    captured: list[tuple[str, str]] = []
+
+    def my_notify(title: str, body: str) -> None:
+        captured.append((title, body))
+
+    adapter, trader = _build_adapter(
+        callback_queue_size=2,
+        drop_notify_threshold=5,
+        notify_fn=my_notify,
+    )
+    adapter.connect()
+    rep = adapter.place_order(
+        OrderIntent(
+            client_order_id="c1", symbol="000001",
+            side="buy", quantity=100, price=10.0,
+        ),
+    )
+    broker_id = int(rep.broker_order_id)
+
+    # Push 20 trades → 2 queued, rest dropped. We don't pin the
+    # exact drop count because each ``emit_on_trade`` may push
+    # 1 or 2 events (trade + optional order-status update).
+    for i in range(20):
+        trader.emit_on_trade(
+            order_id=broker_id,
+            stock_code="000001.SZ",
+            direction=trader._STOCK_BUY,
+            volume=1,
+            price=10.0 + i * 0.01,
+        )
+    drop_seen = adapter.drop_count
+    assert drop_seen >= 5, f"expected ≥5 drops, got {drop_seen}"
+
+    # First drain: threshold crossed → notify fires.
+    adapter.consume_events(max_events=100)
+    assert len(captured) == 1, captured
+    title, body = captured[0]
+    assert "drop count > 5" in title.lower()
+    assert "test-acct" in title
+    assert "event=event_drop_threshold" in body
+    assert f"drop_count={drop_seen}" in body
+    assert "threshold=5" in body
+    assert "account_id=test-acct" in body
+
+    # Second drain: threshold still crossed, but flag is set → no re-fire.
+    adapter.consume_events(max_events=100)
+    assert len(captured) == 1  # still exactly 1
+
+
+def test_drop_count_threshold_disabled_when_zero() -> None:
+    """``drop_notify_threshold=0`` disables the alert (opt-out)."""
+    captured: list[tuple[str, str]] = []
+
+    def my_notify(title: str, body: str) -> None:
+        captured.append((title, body))
+
+    adapter, trader = _build_adapter(
+        callback_queue_size=2,
+        drop_notify_threshold=0,  # disabled
+        notify_fn=my_notify,
+    )
+    adapter.connect()
+    rep = adapter.place_order(
+        OrderIntent(
+            client_order_id="c1", symbol="000001",
+            side="buy", quantity=100, price=10.0,
+        ),
+    )
+    broker_id = int(rep.broker_order_id)
+    for i in range(20):
+        trader.emit_on_trade(
+            order_id=broker_id,
+            stock_code="000001.SZ",
+            direction=trader._STOCK_BUY,
+            volume=1,
+            price=10.0,
+        )
+    adapter.consume_events(max_events=100)
+    assert adapter.drop_count > 0
+    assert captured == []
+
+
+def test_drop_count_notify_fn_exception_does_not_crash() -> None:
+    """Bad ``notify_fn`` on drop threshold is swallowed (best-effort)."""
+    def bad_notify(title: str, body: str) -> None:
+        raise RuntimeError("钉聊 down")
+
+    adapter, trader = _build_adapter(
+        callback_queue_size=2,
+        drop_notify_threshold=3,
+        notify_fn=bad_notify,
+    )
+    adapter.connect()
+    rep = adapter.place_order(
+        OrderIntent(
+            client_order_id="c1", symbol="000001",
+            side="buy", quantity=100, price=10.0,
+        ),
+    )
+    broker_id = int(rep.broker_order_id)
+    for i in range(20):
+        trader.emit_on_trade(
+            order_id=broker_id,
+            stock_code="000001.SZ",
+            direction=trader._STOCK_BUY,
+            volume=1,
+            price=10.0,
+        )
+    # Notify raising must NOT crash the runner.
+    drained = adapter.consume_events(max_events=100)
+    assert len(drained) == 2
