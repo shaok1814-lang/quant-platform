@@ -7,3 +7,12 @@
     17 candidate frameworks (Qlib, backtrader, vectorbt, rqalpha, AKQuant, NautilusTrader, WonderTrader, …) compared across 6 dimensions. Final choice: **AKQuant as engine + self-research layer for everything else**. See CLAUDE.md §架构决策 for the decision rationale.
 
 --8<-- "framework-survey-content.md"
+
+---
+
+## Next steps
+
+- Architecture overview → [Architecture](../architecture.md)
+- The final decision on 17 candidates → CLAUDE.md §架构决策
+- Feature index → [Features](../features.md)
+- W1 → W7.1 project arc → [Project Timeline](../timeline.md)

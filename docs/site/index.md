@@ -80,3 +80,12 @@ Sunday 9:00 cron 自动跑 MACrossStrategy paper session + 钉聊 alert + dashbo
 | 测试 | pytest（537  个测试，~30s 全套） |
 
 完整列表见 [技术栈](tech-stack.md)。
+
+---
+
+## 下一步
+
+- 30 秒装好跑测试 → [快速开始](quickstart.md)
+- 看看 6 层架构长什么样 → [系统架构](architecture.md)
+- 项目怎么从 W1 走到 W7.1 的 → [项目时间线](timeline.md)
+- 想看 17 个量化框架对比 → [框架调研](framework-survey.md)

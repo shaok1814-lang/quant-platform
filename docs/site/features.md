@@ -103,3 +103,12 @@ quant-platform 在 6 个层面都有可测试、有边界覆盖、可立即跑�
 </div>
 
 </div>
+
+---
+
+## 下一步
+
+- 想看每个模块怎么连起来 → [系统架构](architecture.md)
+- 想跑通 + 看 dashboard → [快速开始](quickstart.md)
+- 想看测试套件真实跑的样子 → [项目时间线](timeline.md)
+- 想看每个模块的公开 API → [API 参考](api-reference.md)

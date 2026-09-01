@@ -98,3 +98,12 @@ uv run mkdocs serve    # http://127.0.0.1:8000/
 ```
 
 Next steps: [Architecture](architecture.md) · [A-Share Rules](a-share-rules.md) · [Framework Survey](framework-survey.md).
+
+---
+
+## Next steps
+
+- See how each module connects → [Architecture](architecture.md)
+- 8 A-share rule details → [A-Share Rules](a-share-rules.md)
+- How to run the 4-week paper discipline → [Paper-Validation Runbook](paper-runbook.md)
+- 17-framework survey → [Framework Survey](framework-survey.md)

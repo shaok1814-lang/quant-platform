@@ -97,4 +97,11 @@ uv run python -c "from ops.weekly_paper_job import run_weekly_paper_session; pri
 uv run mkdocs serve    # http://127.0.0.1:8000/
 ```
 
-下一步：[架构](architecture.md) · [A 股规则](a-share-rules.md) · [框架调研](framework-survey.md)。
+---
+
+## 下一步
+
+- 想看每个模块怎么连起来 → [系统架构](architecture.md)
+- 8 条 A 股规则的细节 → [A 股规则](a-share-rules.md)
+- 4 周模拟盘纪律怎么跑 → [模拟盘手册](paper-runbook.md)
+- 想看 17 个量化框架对比 → [框架调研](framework-survey.md)

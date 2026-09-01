@@ -68,8 +68,6 @@ flowchart TD
     class R4,R6 brokerStyle
 ```
 
-完整模块清单见 [API 参考](api-reference.md) + 各模块 README。
-
 ## 路线图
 
 ```mermaid
@@ -80,3 +78,60 @@ timeline
 ```
 
 完整版本：[CLAUDE.md §6 周路线图](https://github.com/shaok1814-lang/quant-platform/blob/master/CLAUDE.md)。
+
+## 防过拟合：Walk-Forward 滚动窗口 {#walk-forward-windows}
+
+[Walk-Forward](anti-overfit.md) 是本项目强制执行的的验证流程 — 训练 24 个月、测试 12 个月、季度滚动 3 个月，**不允许重叠**：
+
+```mermaid
+gantt
+    title Walk-Forward 验证窗口（24m train / 12m test / 3m step）
+    dateFormat YYYY-MM
+    axisFormat %Y-%m
+
+    section Fold 1
+    Train (24m)    :a1, 2023-01, 24M
+    Test (12m)     :a2, after a1, 12M
+
+    section Fold 2
+    Train (24m)    :b1, 2023-04, 24M
+    Test (12m)     :b2, after b1, 12M
+
+    section Fold 3
+    Train (24m)    :c1, 2023-07, 24M
+    Test (12m)     :c2, after c1, 12M
+```
+
+每个 fold 独立 backtest，独立 Optuna，统计每个 metric 的 IS/OOS 衰减比。完整约束见 [防过拟合](anti-overfit.md)。
+
+## A 股规则：覆盖矩阵 {#rule-coverage-matrix}
+
+每条规则对应不同事件触发 / 不同 bar 处理动作。完整 patch 层 8 规则、纯函数 + ≥6 边界单元测试的详情见 [A 股规则](a-share-rules.md)：
+
+```mermaid
+flowchart LR
+    A[on_bar event] --> B{event type?}
+
+    B -->|buy intent| C[price_limits<br/>检查涨停]
+    B -->|sell intent| D[price_limits<br/>检查跌停]
+    B -->|every bar| E[suspension<br/>检查停牌]
+    B -->|every bar| F[ex_dividend<br/>检查除权]
+    B -->|universe build| G[st_filter<br/>过滤 ST]
+    B -->|every fill| H[lot_enforcement<br/>100 股整手]
+    B -->|every fill| I[stamp_tax<br/>卖单边 0.1%]
+    B -->|every fill| J[T+1<br/>次日才可卖]
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+```
+
+矩阵决定了**哪条规则对应哪种 on_bar event**，避免遗漏。
+
+---
+
+## 下一步
+
+- 8 条 A 股规则的细节 → [A 股规则](a-share-rules.md)
+- 防过拟合 4 条规则 + Walk-Forward → [防过拟合](anti-overfit.md)
+- 4 周模拟盘纪律 → [模拟盘手册](paper-runbook.md)
+- 想看 17 框架对比 → [框架调研](framework-survey.md)

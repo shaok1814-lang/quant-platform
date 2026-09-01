@@ -80,3 +80,60 @@ timeline
 ```
 
 Full version: [CLAUDE.md §6-week roadmap](https://github.com/shaok1814-lang/quant-platform/blob/master/CLAUDE.md).
+
+## Anti-overfit: Walk-Forward rolling windows
+
+[Walk-Forward](anti-overfit.md) is enforced project-wide — 24 months train, 12 months test, 3-month step, **no overlapping windows**:
+
+```mermaid
+gantt
+    title Walk-Forward windows (24m train / 12m test / 3m step)
+    dateFormat YYYY-MM
+    axisFormat %Y-%m
+
+    section Fold 1
+    Train (24m)    :a1, 2023-01, 24M
+    Test (12m)     :a2, after a1, 12M
+
+    section Fold 2
+    Train (24m)    :b1, 2023-04, 24M
+    Test (12m)     :b2, after b1, 12M
+
+    section Fold 3
+    Train (24m)    :c1, 2023-07, 24M
+    Test (12m)     :c2, after c1, 12M
+```
+
+Each fold runs its own backtest + Optuna; per-metric IS/OOS decay ratio is logged. Full constraints: [anti-overfit](anti-overfit.md).
+
+## A-share rules: coverage matrix
+
+Each rule fires on a different event / on_bar action. The full 8-rule patch layer (pure-function + ≥6 boundary tests each) is documented on [A-Share Rules](a-share-rules.md):
+
+```mermaid
+flowchart LR
+    A[on_bar event] --> B{event type?}
+
+    B -->|buy intent| C[price_limits<br/>check limit-up]
+    B -->|sell intent| D[price_limits<br/>check limit-down]
+    B -->|every bar| E[suspension<br/>check halt]
+    B -->|every bar| F[ex_dividend<br/>check qfq]
+    B -->|universe build| G[st_filter<br/>exclude ST]
+    B -->|every fill| H[lot_enforcement<br/>100-share lot]
+    B -->|every fill| I[stamp_tax<br/>sell-only 0.1%]
+    B -->|every fill| J[T+1<br/>next-day-sellable]
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+```
+
+The matrix shows **which rule corresponds to which on_bar event**,** preventing omissions.
+
+---
+
+## Next steps
+
+- 8 A-share rule details → [A-Share Rules](../a-share-rules.md)
+- 4 anti-overfit rules + Walk-Forward → [Anti-Overfit](../anti-overfit.md)
+- 4-week paper discipline → [Paper-Validation Runbook](../paper-runbook.md)
+- 17-framework survey → [Framework Survey](../framework-survey.md)

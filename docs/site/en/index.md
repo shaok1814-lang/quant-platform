@@ -80,3 +80,12 @@ Sunday 9:00 cron runs the MACrossStrategy paper session automatically + DingTalk
 | Testing | pytest (537 tests, ~30s full suite) |
 
 Full list on the [Tech Stack page](../tech-stack.md).
+
+---
+
+## Next steps
+
+- 30 seconds to install + run tests → [Quick Start](../quickstart.md)
+- See the 6-layer architecture → [Architecture](../architecture.md)
+- How the project went W1 → W7.1 → [Project Timeline](../timeline.md)
+- 17-framework survey → [Framework Survey](../framework-survey.md)

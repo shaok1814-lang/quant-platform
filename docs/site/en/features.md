@@ -103,3 +103,12 @@ Post-processors: `winsorize` (3σ / MAD / quantile) → `standardize` → `Neutr
 </div>
 
 </div>
+
+---
+
+## Next steps
+
+- See how each module connects → [Architecture](../architecture.md)
+- Install + run + see the dashboard → [Quick Start](../quickstart.md)
+- See how the test suite grew → [Project Timeline](../timeline.md)
+- Public API for each module → [API Reference](../api-reference.md)
