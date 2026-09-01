@@ -150,9 +150,14 @@ def run_walk_forward(
         base_params: ``strategy_kwargs`` baseline. Used unchanged
             when ``optuna_trials == 0``; serves as the optuna
             baseline otherwise.
-        train_months / test_months / step_months: Forwarded to
-            :func:`walk_forward_splits` (which enforces the
-            anti-overfit ``step_months >= test_months`` guard).
+        train_months: Forwarded to :func:`walk_forward_splits` —
+            train window in months.
+        test_months: Forwarded to :func:`walk_forward_splits` —
+            test window in months.
+        step_months: Forwarded to :func:`walk_forward_splits` —
+            step size in months. :func:`walk_forward_splits`
+            enforces the anti-overfit ``step_months >= test_months``
+            guard.
         optuna_trials: If ``> 0`` and ``optuna_search_space`` is
             provided, optuna tunes per fold on the train slice.
             Default ``0`` (CLAUDE.md 防过拟合 #4: "简单优先" — no
