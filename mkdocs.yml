@@ -1,0 +1,130 @@
+site_name: quant-platform — 个人 A 股量化研究 / 交易系统
+site_description: A personal A-share quantitative research & execution platform built on AKQuant. Bilingual (zh / en).
+site_author: Schenkai
+site_url: https://shaok1814-lang.github.io/quant-platform/
+
+repo_url: https://github.com/shaok1814-lang/quant-platform
+repo_name: shaok1814-lang/quant-platform
+edit_uri: edit/master/docs/site/
+
+copyright: Copyright © 2026 Schenkai · 仅供个人研究与合规模拟使用,不构成投资建议
+
+docs_dir: docs/site
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色模式
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色模式
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+  font:
+    text: Noto Sans SC
+    code: JetBrains Mono
+
+extra:
+  alternate:
+    - name: English
+      link: /quant-platform/en/
+      lang: en
+    - name: 简体中文
+      link: /quant-platform/
+      lang: zh
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/shaok1814-lang
+      name: GitHub
+
+extra_css:
+  - overrides/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.snippets:
+      check_paths: true
+      base_path:
+        - docs/site/includes
+
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: true
+            heading_level: 3
+            members_order: source
+            docstring_section_style: table
+            separate_signature: true
+
+nav:
+  - 首页: index.md
+  - 功能: features.md
+  - 快速开始: quickstart.md
+  - 架构: architecture.md
+  - A 股规则: a-share-rules.md
+  - 防过拟合: anti-overfit.md
+  - 模拟盘手册: paper-runbook.md
+  - 项目时间线: timeline.md
+  - 框架调研: framework-survey.md
+  - 技术栈: tech-stack.md
+  - API 参考: api-reference.md

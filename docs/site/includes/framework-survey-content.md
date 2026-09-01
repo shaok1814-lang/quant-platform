@@ -1,0 +1,347 @@
+# 量化开源框架调研与个人落地方案
+
+> 数据说明：本文件中的星标数、最近推送时间、许可证为 2026-08-23 通过 GitHub API 实时获取（经本地代理 127.0.0.1:7890）。项目架构、功能、优劣基于代码库公开文档与社区认知整理。
+
+## 一、调研目标与口径
+
+
+
+
+
+
+- 目标市场：以 A 股为主，兼顾期货、ETF、可转债等个人可交易品种。
+- 核心诉求：个人自用、可维护、数据可靠、回测可信、可选模拟/实盘。
+- 对比维度：功能设计、技术架构、技术栈、优劣。
+
+## 二、候选项目分类
+
+1. 研究/回测框架：Qlib、backtrader、vectorbt、zipline-reloaded、backtesting.py、Hikyuu、rqalpha、AKQuant。
+2. 全功能平台：vnpy、QUANTAXIS、LEAN、NautilusTrader、WonderTrader、Qbot、阿布量化（abu）。
+3. 实盘/执行：easytrader、vnpy、openctp、QMT（券商终端，非开源）、掘金量化。
+4. 数据源：akshare、adata、Ashare、Tushare Pro、baostock。
+
+## 三、实时数据速览（2026-08-23）
+
+| 项目 | Stars | 最近推送 | License | 维护状态判断 |
+| --- | --- | --- | --- | --- |
+| microsoft/qlib | 47,845 | 2026-07-23 | MIT | 活跃 |
+| vnpy/vnpy | 44,687 | 2026-08-10 | MIT | 活跃 |
+| nautechsystems/nautilus_trader | 27,319 | 2026-08-23 | LGPL-3.0 | 活跃 |
+| mementum/backtrader | 22,928 | 2024-08-19 | GPL-3.0 | 基本停滞 |
+| akfamily/akshare | 22,178 | 2026-08-21 | MIT | 活跃 |
+| QuantConnect/Lean | 21,309 | 2026-08-21 | Apache-2.0 | 活跃 |
+| UFund-Me/Qbot | 18,375 | — | — | 活跃 |
+| bbfamily/abu | 18,200 | — | — | 慢/停滞 |
+| waditu/tushare | 15,360 | 2024-03-13 | BSD-3-Clause | 慢 |
+| QUANTAXIS/QUANTAXIS | 11,031 | 2026-02-28 | MIT | 慢 |
+| shidenggui/easytrader | 10,077 | 2026-02-28 | MIT | 慢 |
+| kernc/backtesting.py | 8,876 | 2026-08-05 | AGPL-3.0 | 活跃 |
+| polakowo/vectorbt | 8,763 | 2026-08-02 | 自定义(NOASSERTION) | 活跃 |
+| ricequant/rqalpha | 6,712 | — | Apache-2.0 | 中 |
+| wondertrader/wondertrader | 6,288 | — | — | 活跃 |
+| fasiondog/hikyuu | 3,458 | 2026-08-22 | Apache-2.0 | 活跃 |
+| akfamily/akquant | 2,067 | — | — | 较新 |
+| stefan-jansen/zipline-reloaded | 1,926 | 2026-01-06 | Apache-2.0 | 社区维护 |
+
+注：`—` 表示本次未逐项补抓；许可证影响仅在对外分发/商用时需要关注，个人自用基本无影响（AGPL/GPL 同样允许私有使用）。
+
+## 四、逐项目对比
+
+### 1. Microsoft Qlib（47.8k ★）
+
+- 定位：面向 AI/机器学习的量化研究平台，覆盖数据、因子、模型、回测、组合、绩效。
+- 功能设计：点数据/表达式引擎（Alpha158、Alpha360）、模型库（LightGBM/XGBoost/PyTorch/LSTM）、滚动训练与回测、组合优化、收益归因、在线服务。
+- 技术架构：分层架构，Data Server → Data Handler → Model → Strategy → Executor → 分析；本地二进制点数据（.bin）与数据集缓存。
+- 技术栈：Python；numpy/pandas、LightGBM、XGBoost、PyTorch、scikit-learn；FastAPI、Redis、MongoDB（qlib-server）。
+- 优点：研究/机器学习能力强、因子表达丰富、回测严谨（手续费、涨跌停、TopK drop）、微软维护、文档好。
+- 缺点：实盘/交易执行弱，无国内券商网关；A 股数据需自行导入；偏研究而非自动化交易；学习曲线较高。
+
+### 2. backtrader（22.9k ★）
+
+- 定位：经典事件驱动回测框架。
+- 功能设计：Cerebro 容器 + 数据 feed + 策略 + broker 模拟 + 指标库 + 分析器 + 参数优化 + 绘图。
+- 技术架构：事件驱动引擎，逐 bar 循环；Cerebro 串联 data、strategy、broker、sizer、observer、analyzer。
+- 技术栈：纯 Python、pandas/numpy、matplotlib（绘图可选）。
+- 优点：成熟稳定、社区大、资料多、指标/分析器丰富、支持多品种与多时间框架。
+- 缺点：上游维护基本停滞（最近推送 2024-08）、逐 bar Python 循环性能一般、实盘需自行接 broker、新版 Python 绘图有兼容问题。
+
+### 3. vectorbt（8.8k ★）
+
+- 定位：基于 NumPy/Numba 的向量化回测库。
+- 功能设计：向量化回测、信号生成、组合、大量绩效指标、参数网格扫描、可视化。
+- 技术架构：向量化计算，通过 numpy 广播替代 Python 循环，Numba JIT 加速。
+- 技术栈：Python、NumPy、pandas、Numba、plotly。
+- 优点：回测极快、适合大规模参数搜索与组合研究、表达力强。
+- 缺点：学习曲线陡、不适合复杂事件驱动逻辑（盘中调仓、限价/滑点细节、状态依赖策略）、无实盘。
+
+### 4. zipline-reloaded（1.9k ★）
+
+- 定位：Quantopian 开源的事件驱动回测引擎（原项目已归档，由社区 fork 维护）。
+- 功能设计：交易日历与数据 bundle、Pipeline API（横截面因子计算）、回测、绩效分析（empyrical/pyfolio）。
+- 技术架构：事件驱动；数据 bundle 存 HDF5；Pipeline 引擎做横截面计算。
+- 技术栈：Python、pandas/numpy、HDF5；依赖较重（需 C 编译）。
+- 优点：API 规整、Pipeline 因子计算优雅、教学资料多。
+- 缺点：原项目已归档、仅社区维护、安装/依赖繁琐（尤其 Windows）、A 股数据需自行构建 bundle、无实盘。
+
+### 5. backtesting.py（8.9k ★）
+
+- 定位：轻量、易读的回测库。
+- 功能设计：策略回测、内置指标、参数优化（热力图）、绘图、多标的。
+- 技术架构：事件驱动（逐 bar），单文件核心、结构轻量。
+- 技术栈：Python、pandas、numpy、bokeh。
+- 优点：极简、易上手、代码清晰，适合个人快速验证小策略。
+- 缺点：功能较 backtrader 少、无实盘、复杂场景能力有限。
+
+### 6. rqalpha（6.7k ★，RiceQuant）
+
+- 定位：国内事件驱动回测/交易框架，聚宽/米筐同源思路。
+- 功能设计：mod 化架构、数据、回测、实盘（部分券商/模拟）、策略模板、绩效分析。
+- 技术架构：事件驱动引擎 + mod 插件体系。
+- 技术栈：Python、pandas、Click（CLI）。
+- 优点：API 与国内在线量化平台风格一致、回测/实盘接口规整。
+- 缺点：文档和更新节奏一般、实盘接口依赖券商、生态不如 vnpy。
+
+### 7. AKQuant（2.1k ★，AKShare 团队，较新）
+
+- 定位：AKShare 团队推出的高性能量化研究与交易框架。
+- 功能设计：回测 + 交易一体，宣称高性能，面向国内个人/研究用户。
+- 技术架构：与 akshare 数据生态联动。
+- 技术栈：Python（较新项目，具体以仓库文档为准）。
+- 优点：数据接入顺滑（AKShare 生态）、方向契合个人量化。
+- 缺点：较新、社区/文档仍在积累，成熟度待观察。
+
+### 8. Hikyuu（3.5k ★）
+
+- 定位：C++ 核心的 A 股/全球量化分析框架，偏研究。
+- 功能设计：K 线数据管理、指标库、策略、资金管理、绩效统计、组合、数据导入；实盘接口较弱。
+- 技术架构：C++ 核心 + Python 绑定（Boost.Python），数据本地文件（.h5/.db），事件/信号机制。
+- 技术栈：C++17、Python、HDF5/SQLite、matplotlib。
+- 优点：性能好、A 股适配好、中文文档与社区、免费、更新活跃。
+- 缺点：生态较小、实盘/券商网关弱、报告/可视化一般、入门门槛中等。
+
+### 9. vnpy（44.7k ★）
+
+- 定位：国内最流行的开源量化交易平台，以实盘交易/网关为核心。
+- 功能设计：事件引擎、行情网关、交易网关、CTA/价差/组合/算法/期权/数据服务、PyQt 交易终端、策略回测（回测相对弱）。
+- 技术架构：事件驱动；EventEngine + 主引擎；Gateway 与 App 插件化；数据库（SQLite/MySQL/MongoDB）存储；GUI 用 PyQt。
+- 技术栈：Python、PyQt/PySide、pymongo/pymysql，封装 CTP 等国内接口。
+- 优点：国内行情/交易网关最全、实盘成熟、社区大、插件化，适合期货/股票实盘与半自动交易。
+- 缺点：回测能力较弱、部分代码耦合、上手需配置数据库与券商接口、股票实盘受券商限制。
+
+### 10. QUANTAXIS（11.0k ★）
+
+- 定位：国内全栈量化平台：数据、回测、模拟、实盘、Web 管理。
+- 功能设计：数据采集/存储、回测引擎、账户/风控、模拟撮合、实盘对接、Web UI、可视化。
+- 技术架构：Python 后端 + MongoDB 数据 + Node/Web 前端；模块化（QA、QAData、QAFetch、QABacktest、QAAccount、QAStrategy、QAWEB 等）。
+- 技术栈：Python、MongoDB、Node.js/Vue、Docker。
+- 优点：功能全（一站式）、有 Web 可视化、国内社区曾活跃。
+- 缺点：项目庞大、文档滞后、维护活跃度下降（最近推送 2026-02）、依赖重（MongoDB 必装）、部分模块老旧。
+
+### 11. QuantConnect LEAN（21.3k ★）
+
+- 定位：开源算法交易引擎（QuantConnect 云平台底层）。
+- 功能设计：回测+实盘一体、多资产（股票/期货/期权/外汇/加密）、多 broker、云与本地 CLI。
+- 技术架构：C# 核心引擎 + Python 策略（双语言），事件驱动，数据/执行/研究分离。
+- 技术栈：C#/.NET、Python、云服务。
+- 优点：功能全、多资产多 broker、云端免运维、文档完善。
+- 缺点：本地部署复杂（需 .NET）、A 股数据/券商支持有限、核心 C# 对 Python 用户扩展难。
+
+### 12. NautilusTrader（27.3k ★）
+
+- 定位：高性能事件驱动算法交易平台，统一回测与实盘。
+- 功能设计：回测/实盘同一套策略代码、多交易所多资产、订单管理、风险引擎、时钟、消息总线、交易所适配器。
+- 技术架构：Rust 核心（nautilus_core）+ Python API，事件驱动，消息总线，高性能。
+- 技术栈：Rust + PyO3、Python、Arrow（数据）、Redis（缓存）、数据库适配。
+- 优点：回测/实盘无缝切换、高性能、风险/订单管理严谨、架构现代、增长快。
+- 缺点：学习曲线陡、文档中等、A 股/国内券商网关少、对个人初学者偏重。
+
+### 13. WonderTrader（6.3k ★）
+
+- 定位：国内 C++ 量化研发交易一站式框架。
+- 功能设计：数据、回测、实盘一体，覆盖股票/期货，配套 wttools 等工具。
+- 技术架构：C++ 核心 + Python 策略。
+- 优点：高性能、国内实盘适配（CTP/证券柜台）。
+- 缺点：C++ 门槛高、文档/社区中等、上手成本高。
+
+### 14. 阿布量化 abu / Qbot（18k ★ 级）
+
+- abu（bbfamily/abu）：Python 开源量化，覆盖股票/期权/期货/比特币与机器学习，偏教学与研究；维护偏慢。
+- Qbot（UFund-Me/Qbot）：AI 自动量化机器人，本地部署，偏 AI 选股/策略，工程化程度参差，适合参考思路。
+
+### 15. easytrader（10.1k ★）
+
+- 定位：通过券商客户端自动化下单。
+- 功能设计：对接同花顺/miniQMT/雪球等，查询资金/持仓/成交并下单，可跟踪聚宽/米筐模拟盘。
+- 技术架构：Python，通过 UI 自动化/COM/网络接口控制客户端。
+- 优点：无需官方券商 API、上手快、适合个人小资金/模拟。
+- 缺点：依赖客户端界面、稳定性差、券商升级易失效、存在合规与风控风险、无回测。
+
+### 16. openctp（2.9k ★）
+
+- 定位：提供 CTP 及各券商柜台（中泰 XTP、华鑫 TORA、东财 EMT、盈透 TWS 等）的 CTPAPI 兼容接口。
+- 价值：解决个人实盘“柜台接口”问题，可与 vnpy 等结合使用；另有 TTS 模拟环境。
+- 优点：打通多券商柜台、有模拟环境。
+- 缺点：偏底层接口层，需配合策略框架使用。
+
+### 17. 数据源：akshare / adata / Ashare / Tushare / baostock
+
+- akshare（22.2k ★）：免费数据聚合库，覆盖面广、更新活跃；缺点是依赖公开源、接口易变、需自行清洗与持久化。
+- adata（1nchaos/adata，5.1k ★）：免费开源 A 股量化数据库，专注 A 股，含 K 线/概念/资金流等，适合做本地数据底仓。
+- Ashare（3.8k ★）：免费 A 股实时/历史行情接口，新浪+腾讯双源、自动切换，DataFrame 输出，适合行情补充。
+- Tushare Pro（15.4k ★，SDK）：数据字段全、质量较稳定；缺点是积分/付费门槛、SDK 更新慢。
+- baostock：官方 GitHub 仓库当前返回 404（可能已迁移），pip 包仍可用；社区镜像 shimencaiji/baostock。
+- 结论：建议 akshare/adata 为主采集，Ashare 补实时行情，Tushare/baostock 做交叉校验。
+
+## 五、横向对比总表
+
+| 项目 | 类型 | 核心语言 | 回测 | 实盘 | A股适配 | 机器学习 | 维护状态 | 适合场景 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qlib | 研究平台 | Python | 强 | 弱 | 需自导数据 | 强 | 活跃 | 因子/ML 研究 |
+| backtrader | 回测框架 | Python | 强 | 需自接 | 中等 | 弱 | 停滞 | 事件驱动策略回测 |
+| vectorbt | 回测库 | Python | 强(极快) | 无 | 中等 | 弱 | 活跃 | 快速扫描/组合 |
+| rqalpha | 回测框架 | Python | 中 | 中 | 强 | 弱 | 中 | 国内事件驱动回测 |
+| AKQuant | 回测+交易 | Python | 中 | 中 | 强 | 弱 | 新 | AKShare 生态回测 |
+| zipline-reloaded | 回测引擎 | Python | 中 | 无 | 需自建 bundle | 弱 | 社区维护 | 教学/横截面因子 |
+| backtesting.py | 回测库 | Python | 中 | 无 | 中等 | 弱 | 活跃 | 轻量快速验证 |
+| Hikyuu | 分析框架 | C++/Python | 中 | 弱 | 强 | 弱 | 活跃 | A股研究 |
+| vnpy | 交易平台 | Python | 中 | 强 | 强 | 弱 | 活跃 | 国内实盘 |
+| QUANTAXIS | 全栈平台 | Python+Node | 中 | 中 | 强 | 弱 | 慢 | 一站式(需维护成本) |
+| WonderTrader | 全栈平台 | C++/Python | 中 | 强 | 强 | 弱 | 活跃 | 高性能国内实盘 |
+| LEAN | 交易引擎 | C#/Python | 强 | 强 | 弱 | 中 | 活跃 | 多资产/云端 |
+| NautilusTrader | 交易平台 | Rust/Python | 强 | 强 | 弱 | 弱 | 活跃 | 高性能机构级 |
+| abu / Qbot | 研究/教学 | Python | 中 | 弱 | 强 | 中 | 慢/参差 | 教学参考、AI 选股 |
+| easytrader | 执行工具 | Python | 无 | 中 | 强 | 无 | 慢 | 客户端自动化 |
+| openctp | 柜台接口 | C | 无 | 中(接口层) | 强 | 无 | 活跃 | 实盘柜台打通 |
+| akshare/adata/Ashare/Tushare | 数据源 | Python | 无 | 无 | 强 | 无 | 活跃/中 | 数据采集 |
+
+## 六、选型结论（个人自用）
+
+推荐采用“分层 + 组合拳”，而不是绑定单一重平台：
+
+- 数据：akshare 或 adata 采集，Ashare 补实时行情，Tushare/baostock 交叉校验；本地用 DuckDB（或 SQLite）+ Parquet 存储。
+- 研究/快速扫描：vectorbt 做信号与参数扫描。
+- 事件驱动回测：先自研一个极简回测引擎（A 股规则特殊）；需要现成框架时，国内可选 rqalpha/AKQuant，通用可选 backtrader（注意已停摆）。
+- 因子/机器学习（可选进阶）：Qlib + LightGBM。
+- 实盘（可选）：股票用 QMT/miniQMT 或 easytrader；期货/多柜台用 vnpy + openctp；先模拟后小资金。
+- 可视化/调度：Jupyter + Streamlit 报告 + 定时任务（或 FastAPI 轻量服务）。
+
+选型理由：
+
+- 个人项目最怕“重平台维护成本”和“黑盒回测”，轻量自研核心 + 成熟库组合可控制复杂度。
+- A 股有 T+1、涨跌停、停牌、除权除息、最小交易单位等特殊规则，通用框架往往覆盖不全，核心回测逻辑必须自研或深度定制。
+- 数据是根基，先用免费稳定的数据源跑通，再决定是否付费。
+- 许可证注意：backtrader 为 GPL、backtesting.py 为 AGPL、vectorbt 为自定义许可，个人私有使用无影响；若未来计划开源分发代码，需要评估传染性。
+
+## 七、可执行落地方案
+
+### 7.1 总体架构
+
+分层：
+
+1. 数据层 data：采集 → 清洗（复权/停牌/除权除息） → 存储（DuckDB/Parquet） → 因子缓存。
+2. 因子层 factors：因子计算、去极值、中性化、标准化。
+3. 策略层 strategies：策略接口、信号生成、组合/风控规则（T+1、涨跌停、停牌、最小交易单位）。
+4. 回测层 backtest：回测引擎、交易成本模型、绩效分析（收益/回撤/夏普/换手/胜率/归因）。
+5. 执行层 execution：模拟/实盘网关、订单管理、风控。
+6. 运行层 ops：配置、日志、调度、报告、可视化。
+
+### 7.2 推荐技术栈
+
+- Python 3.11+，用 uv 或 poetry 管理依赖，用 ruff + mypy/pyright 保持代码质量。
+- 数据：akshare、adata、Ashare、（可选）tushare；存储 DuckDB + PyArrow/Parquet。
+- 计算：pandas、numpy、scipy；快速扫描用 vectorbt（Numba）。
+- 回测：自研极简事件驱动引擎；现成框架备选 rqalpha/AKQuant/backtrader。
+- 机器学习（可选）：LightGBM + Qlib。
+- 可视化：Jupyter、Streamlit、plotly；报告用 Jinja2/HTML 或 Jupyter Notebook。
+- 调度：Windows 任务计划或 cron；日志用 loguru。
+
+### 7.3 建议目录结构
+
+```text
+quant/
+├── config/                 # 配置（数据源、账户、参数）
+├── data/                   # 原始与清洗后数据（DuckDB/Parquet）
+├── quantlib/
+│   ├── data/               # 采集、清洗、存储、数据质检
+│   ├── factors/            # 因子计算与处理
+│   ├── strategies/         # 策略与信号
+│   ├── backtest/           # 回测引擎与绩效分析
+│   ├── execution/          # 模拟/实盘网关与风控
+│   └── utils/              # 日历、指标、缓存等工具
+├── research/               # Jupyter 研究笔记
+├── apps/                   # 任务入口（采集、回测、实盘、报告）
+├── scripts/                # 数据抓取、元数据同步等辅助脚本
+├── tests/                  # 单元测试与数据回放
+├── docs/
+└── pyproject.toml
+```
+
+### 7.4 里程碑
+
+- M0 基础设施：环境、配置、数据管道（日线 + 前复权 + 可选分钟线）、数据质检。
+- M1 单策略回测：自研极简引擎 + 1 个基准策略（如均线/动量），正确计入手续费、滑点、涨跌停、T+1。
+- M2 绩效与参数：指标体系、参数搜索、样本内外与滚动检验、防过拟合。
+- M3 因子/多策略：因子库、多策略组合；可选接入 Qlib + LightGBM。
+- M4 执行（可选）：模拟盘 → 小资金实盘（先股票 QMT/miniQMT 或期货 vnpy+openctp），监控告警。
+- M5 可视化与自动化：日报/周报、定时采集与回测。
+
+### 7.5 关键风险与规避
+
+- 数据质量：前复权口径不一致、停牌/退市/ST 处理；建立数据质检与多源交叉校验。
+- 前视偏差：只用回测时点之前可获取的数据；统一时间戳与对齐规则。
+- 幸存者偏差：纳入已退市股票与历史成分股。
+- 过拟合：优先简单策略、样本外验证、参数敏感度分析。
+- 交易成本：手续费、印花税、滑点、冲击成本；A 股 T+1、涨跌停、停牌约束。
+- 实盘合规：券商接口权限、程序化交易报备/协议，先模拟、小资金试运行。
+
+## 八、实时数据采集方式（可复现）
+
+- 脚本：`scripts/fetch_github_meta.py`（抓取仓库元数据 + 关键词搜索），结果存 `docs/github_repo_meta.json`。
+- 网络：当前沙箱内 curl/.NET 的 Windows TLS 会因凭证限制失败，需用 Python（OpenSSL 栈）+ 本地代理 `127.0.0.1:7890` 访问 GitHub。
+- 待办：可再抓取各仓库 README 与最新 release，确认当前 API 与依赖版本是否有变化。
+
+
+## 九、社交媒体生态（X/Twitter 与 YouTube，A股视角）
+
+> 数据状态：YouTube 部分为 2026-08-23 实时抓取（需代理全局模式，注意：全局模式会让 Codex 自身连接断开）。X 搜索页为登录后渲染的 SPA，匿名 HTML 不含推文，Google/Bing 的 site:x.com 检索也未返回可用推文链接，故 X 部分为生态认知整理，待登录态核实。
+
+### 9.1 YouTube 实测结果（2026-08-23）
+
+检索词：A股量化、量化交易回测、QMT量化、vnpy教程、聚宽量化、A股python量化。
+
+- 项目/实操向（优先关注）
+  - 量化投资邢不行啊：A股程序化交易、QMT 门槛（300W）、Python 一键实盘演示（2.8k–17.6k 观看）。
+  - Python本地量化：miniQMT 全流程（回测→模拟→实盘）、聚宽本地验证、Tushare 本地接口库。
+  - IT杂货铺：miniQMT(xtquant) 环境配置全流程。
+  - 量化策略研究员Andy：迅投 QMT 教程、聚宽量化成长之路。
+  - 野生量化员：QMT 极速上手、vnpy 开源神器介绍与回测演示。
+  - rickey说量化：Python 从零写 A股量化系统系列（数据获取、bar 聚合、K线传递）。
+  - 工程師Tim：量化初学者回测框架选择、backtrader 入门、均线 RSI 策略。
+  - 小宇量化：AI/Vibe 搭量化回测系统 Ep1–3（Docker 部署）。
+  - 可乐AI实验室：Vibe Coding 手搓量化系统（74.6k 观看）。
+  - henrylin的量化策略工坊：开源股票量化分析系统升级（1.4k 观看）。
+  - Should Willing：VNPY 零基础快速入门（1:33:56，6.8k 观看）。
+- 现象/风险向（了解生态与坑）
+  - 汤山老王：中国股市的“元凶”——量化（106.6k 观看）。
+  - A股作手、老陌、龙场王哥：量化如何收割散户与游资。
+  - 菜场主：个人投资者不建议做量化（21.3k 观看）。
+  - Find Interesting AI：量化交易基础、工具选择、学习建议（40.1k 观看）。
+
+### 9.2 YouTube 关键词与结论
+
+- 高频技术关键词：QMT/miniQMT(xtquant)、vnpy、聚宽、Tushare、backtrader、通达信、AI/Vibe-coding、ETF 轮动。
+- 中文 A股量化内容以“教程 + 现象解读 + 成品演示”为主，直接开源的完整项目少；但技术关键词与 GitHub 选型高度一致。
+- 实盘事实标准进一步确认是 QMT/miniQMT；vnpy 是开源框架代表；backtrader 入门内容多（注意其上游已停摆）。
+- “AI/低代码搭量化系统”内容明显增多，适合做功能对标与灵感，不宜作为核心引擎。
+
+### 9.3 X/Twitter 结论（A股视角）
+
+- 匿名抓取受限：x.com 搜索页为 SPA，需登录/GraphQL 才返回推文；本次未能取得推文级数据。
+- 生态认知（待登录核实）：X 上中文“A股量化”技术讨论密度低，全球量化圈（#quant、#algotrading）以美股/加密为主；中文量化更集中在微信公众号、知乎、雪球。
+- 建议：若需精确分析 X，可把关注的 A股量化账号/帖子链接发我，或允许我用已登录 X 的内置浏览器读取（需先解除该站点的自动审批限制）。
+
+### 9.4 对落地的影响
+
+- 技术选型不变，但强化：数据 akshare/adata + Tushare 校验；回测自研/vectorbt（backtrader 仅作学习）；实盘 QMT/miniQMT 首选，开源框架备选 vnpy+openctp。
+- 学习路径按实测播放量与实操密度排序：量化投资邢不行啊 → Python本地量化 → IT杂货铺 → 工程師Tim → rickey说量化。
+- 风险提示：警惕“量化神器/课程”类内容里的过拟合与营销；个人实盘受券商 QMT 门槛与程序化报备约束。

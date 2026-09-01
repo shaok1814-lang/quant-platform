@@ -122,3 +122,5 @@ backtest/reports/*.json
 
 # Research notebooks output cells (only .ipynb files committed manually)
 research/.cache/
+# MkDocs build artifact
+/site/
