@@ -48,7 +48,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
       - name: Install dependencies (docs group)
-        run: uv sync --group docs --frozen
+        run: uv sync --extra docs --frozen
       - name: Build site (strict — fails on broken links / missing nav targets)
         run: uv run mkdocs build --strict
       - name: Upload artifact
