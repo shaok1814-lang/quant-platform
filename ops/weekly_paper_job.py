@@ -43,13 +43,14 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_cls
 from pathlib import Path
 from typing import Any, Final
 
 from data_layer.storage.duck import DuckStore
+from execution.protocol import DEFAULT_RISK_CONFIG
 from loguru import logger
 
 __all__ = [
@@ -227,13 +228,41 @@ def run_weekly_paper_session(
     journal_path = out_dir / f"journal_{started.date().isoformat()}.sqlite"
     adapter = AkquantPaperAdapter()
     journal = PaperJournal(journal_path)
+    # Wire in-session kill-switch alerts to 钉聊 so the operator sees
+    # intra-session drawdown flips (not just post-session). Mirrors
+    # the post-session _notify_kill_switch path below.
+    from execution.runner import PaperSessionConfig
 
-    paper_report = run_paper_session(
-        strategy=bridge,
-        data=df,
-        adapter=adapter,
-        journal=journal,
+    session_cfg = (
+        PaperSessionConfig(notify_fn=lambda t, b: notify.ding(t, b))
+        if notify_on_kill_switch
+        else None
     )
+    # Paper-mode RiskConfig: relax position_cap to match backtest intent
+    # (95%). The strategy's TARGET_PERCENT (0.95) is the research-grade
+    # deploy size; the default 10% cap from ``DEFAULT_RISK_CONFIG`` would
+    # reject every order intent (risk_cap > strategy_target → no fills,
+    # no P&L, no kill-switch test data). Live deployment is a separate
+    # question — there the 10% cap from CLAUDE.md applies.
+    paper_risk_cfg = replace(DEFAULT_RISK_CONFIG, max_position_pct=0.95)
+
+    try:
+        paper_report = run_paper_session(
+            strategy=bridge,
+            data=df,
+            adapter=adapter,
+            journal=journal,
+            session_cfg=session_cfg,
+            risk_cfg=paper_risk_cfg,
+        )
+    except Exception as exc:
+        logger.exception("weekly paper session crashed")
+        if notify_on_kill_switch:
+            notify.ding(
+                f"Weekly paper CRASHED ({symbol})",
+                f"run_date={started.date()}\nerror={type(exc).__name__}: {exc}",
+            )
+        raise
 
     # Kill-switch detection uses the adapter's LIFETIME drawdown
     # (the runner checks ``adapter.query_account().drawdown_pct``
