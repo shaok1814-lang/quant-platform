@@ -137,3 +137,93 @@ def load_universe(path: str | Path | None = None) -> list[UniverseEntry]:
         s=len({e.sector for e in entries}),
     )
     return entries
+
+
+def load_filtered_universe(
+    path: str | Path | None = None,
+    *,
+    include_st: bool = False,
+    include_delisted: bool = True,
+) -> list[UniverseEntry]:
+    """Load universe YAML and apply CLAUDE.md A-share rules.
+
+    Wrapper around :func:`load_universe` that applies the two
+    universe-layer rules from CLAUDE.md:
+
+      * **ST 股票过滤** (``filter_st``) — default drops ST symbols.
+      * **幸存者偏差** (``build_universe(include_delisted=True)``) —
+        default appends delisted symbols so a backtest sample
+        includes them.
+
+    Active symbols come from the YAML (with their proper
+    ``name`` / ``sector``). Delisted symbols are appended with a
+    placeholder ``name="[delisted]"`` and ``sector="delisted"`` so
+    IngestReport output identifies them clearly. ST symbols
+    returned by ``fetch_st_symbols`` are dropped.
+
+    Both ST and delisted snapshots are read offline-first
+    (``allow_network=False``) to keep this deterministic and
+    CI-safe. Run ``scripts/snapshot_st_delisted.py`` periodically
+    to refresh the snapshots.
+
+    Args:
+        path: Optional override of the universe YAML path.
+            ``None`` uses :data:`DEFAULT_UNIVERSE_PATH`.
+        include_st: Pass-through to :func:`filter_st`. Default
+            ``False`` (CLAUDE.md "默认过滤 ST").
+        include_delisted: Pass-through to
+            :func:`build_universe`. Default ``True`` (CLAUDE.md
+            "回测样本必须包含已退市股票").
+
+    Returns:
+        A list of :class:`UniverseEntry` objects sorted by symbol.
+        Length may differ from the YAML if ST filtering drops any
+        active symbols or if delisted inclusion adds more.
+
+    Note:
+        The current universe YAML is ST-clean by curation
+        (``screened by the operator``), so ST filtering is a
+        safety net rather than active suppression. Delisted
+        inclusion is the active rule — adding 200-400 symbols
+        per snapshot.
+    """
+    # Lazy imports to avoid pulling akshare at module import time
+    # (the universe loader is imported early by ops/__main__.py).
+    # Module-qualified access (rather than ``from x import y``)
+    # so tests can monkeypatch ``backtest.a_share.fetch_*``.
+    from backtest import a_share as _a_share
+
+    active_entries = load_universe(path)
+    active_symbols = [e.symbol for e in active_entries]
+    st_set = _a_share.fetch_st_symbols(allow_network=False)
+    delisted_set = _a_share.fetch_delisted_symbols(allow_network=False)
+
+    combined = _a_share.build_universe(
+        active_symbols, include_delisted=include_delisted, delisted_set=delisted_set
+    )
+    kept = _a_share.filter_st(combined, include_st=include_st, st_set=st_set)
+
+    active_map = {e.symbol: e for e in active_entries}
+    out: list[UniverseEntry] = []
+    n_active_kept = 0
+    n_delisted_added = 0
+    for sym in kept:
+        if sym in active_map:
+            out.append(active_map[sym])
+            n_active_kept += 1
+        else:
+            out.append(UniverseEntry(symbol=sym, name="[delisted]", sector="delisted"))
+            n_delisted_added += 1
+    out.sort(key=lambda e: e.symbol)
+
+    logger.info(
+        "filtered universe: {kept} kept ({act} active + {dl} delisted); "
+        "dropped {drop} ST symbols; {st_total} ST total in snapshot, {dl_total} delisted total",
+        kept=len(out),
+        act=n_active_kept,
+        dl=n_delisted_added,
+        drop=len(combined) - len(kept),
+        st_total=len(st_set),
+        dl_total=len(delisted_set),
+    )
+    return out

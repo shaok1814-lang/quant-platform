@@ -36,6 +36,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from backtest.a_share._types import Board
+from backtest.a_share.price_limits import (
+    is_limit_down,
+    is_limit_up,
+)
+
 from execution.protocol import (
     EquitySnapshot,
     OrderIntent,
@@ -45,10 +51,19 @@ from execution.protocol import (
 __all__ = [
     "Allow",
     "Reject",
+    "REASON_DAILY_TRADES",
+    "REASON_DISABLED",
+    "REASON_DRAWDOWN_KILL",
+    "REASON_POSITION_CAP",
+    "REASON_PRICE_LIMIT_DOWN",
+    "REASON_PRICE_LIMIT_UP",
+    "REASON_SUSPENDED",
     "RiskDecision",
     "check_daily_trade_count",
     "check_drawdown_kill_switch",
     "check_position_cap",
+    "check_price_limit",
+    "check_suspension",
 ]
 
 
@@ -92,6 +107,9 @@ REASON_DISABLED: Final[str] = "disabled"
 REASON_POSITION_CAP: Final[str] = "position_cap"
 REASON_DAILY_TRADES: Final[str] = "daily_trade_count"
 REASON_DRAWDOWN_KILL: Final[str] = "drawdown_kill_switch"
+REASON_PRICE_LIMIT_UP: Final[str] = "price_limit_up"
+REASON_PRICE_LIMIT_DOWN: Final[str] = "price_limit_down"
+REASON_SUSPENDED: Final[str] = "suspended"
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +257,114 @@ def check_drawdown_kill_switch(
                 f"{REASON_DRAWDOWN_KILL}: drawdown {snapshot.drawdown_pct:.2%} "
                 f">= kill switch {cfg.drawdown_kill_switch_pct:.2%} "
                 f"(equity {snapshot.total_equity:.0f})"
+            )
+        )
+    return Allow()
+
+
+# ---------------------------------------------------------------------------
+# A-share 涨跌停 (CLAUDE.md 「涨停日不可买入，跌停日不可卖出」)
+# ---------------------------------------------------------------------------
+
+
+def check_price_limit(
+    intent: OrderIntent,
+    current_close: float,
+    prev_close: float,
+    *,
+    board: Board,
+    is_st: bool,
+    cfg: RiskConfig,
+) -> RiskDecision:
+    """Reject buys on 涨停 and sells on 跌停.
+
+    Reuses the canonical ``backtest.a_share.price_limits`` predicates
+    so the rule matches exactly what the public docs claim
+    (``docs/site/a-share-rules.md``). ST symbols always use the
+    5% band regardless of board (CLAUDE.md: ST bands tighter).
+
+    Args:
+        intent: The :class:`OrderIntent` to check.
+        current_close: Today's close (or the limit reference price
+            at the bar the strategy is reacting to).
+        prev_close: Yesterday's close (the limit reference base).
+        board: One of ``"main"``, ``"chinext"``, ``"star"``, ``"bjs"``.
+        is_st: Whether the symbol is currently ST.
+        cfg: Active :class:`RiskConfig`. The guard is enabled iff
+            ``cfg.enable_price_limit_guard`` is ``True``.
+
+    Returns:
+        :class:`Reject` with ``price_limit_up`` / ``price_limit_down``
+        reason tag. :class:`Allow` otherwise (including when
+        guard is disabled).
+
+    Boundary:
+        Same as the pure predicate: a close *exactly* on the
+        limit (after rounding) is treated as at-the-limit (reject).
+    """
+    if not cfg.enable_price_limit_guard:
+        return Allow()
+    if prev_close <= 0:
+        # Defensive: garbage input → don't block the intent.
+        # The runner will still check position cap + daily trades.
+        return Allow()
+    if intent.side == "buy" and is_limit_up(
+        current_close, prev_close, is_st=is_st, board=board
+    ):
+        return Reject(
+            reason=(
+                f"{REASON_PRICE_LIMIT_UP}: close {current_close} at limit "
+                f"(prev_close {prev_close}, board={board}, is_st={is_st}); buy blocked"
+            )
+        )
+    if intent.side == "sell" and is_limit_down(
+        current_close, prev_close, is_st=is_st, board=board
+    ):
+        return Reject(
+            reason=(
+                f"{REASON_PRICE_LIMIT_DOWN}: close {current_close} at limit "
+                f"(prev_close {prev_close}, board={board}, is_st={is_st}); sell blocked"
+            )
+        )
+    return Allow()
+
+
+# ---------------------------------------------------------------------------
+# A-share 停牌 (CLAUDE.md 「停牌日无成交」)
+# ---------------------------------------------------------------------------
+
+
+def check_suspension(
+    intent: OrderIntent,
+    current_volume: int,
+    *,
+    cfg: RiskConfig,
+) -> RiskDecision:
+    """Reject all orders on a bar with ``volume == 0`` (suspected suspension).
+
+    The OHLCV heuristic in ``backtest.a_share.suspension`` is the
+    authoritative detector (uses 2-bar flat-stretch in addition to
+    zero-volume). This guard implements the volume-zero branch only
+    so the runner can short-circuit at the intent layer without
+    recomputing the bar-level inference.
+
+    Args:
+        intent: The :class:`OrderIntent` to check.
+        current_volume: Today's bar volume (integer-share count).
+        cfg: Active :class:`RiskConfig`. The guard is enabled iff
+            ``cfg.enable_suspension_guard`` is ``True``.
+
+    Returns:
+        :class:`Reject` with ``suspended`` reason tag if
+        ``current_volume <= 0``. :class:`Allow` otherwise.
+    """
+    if not cfg.enable_suspension_guard:
+        return Allow()
+    if current_volume <= 0:
+        return Reject(
+            reason=(
+                f"{REASON_SUSPENDED}: volume {current_volume} <= 0 on the bar; "
+                f"intent {intent.side} {intent.quantity or '?'} {intent.symbol} blocked"
             )
         )
     return Allow()

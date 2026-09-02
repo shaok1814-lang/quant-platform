@@ -11,18 +11,22 @@
 | Rule | Module | Trigger | Default behavior | AKQuant built-in? |
 | --- | --- | --- | --- | --- |
 | T+1 settlement | (AKQuant `t_plus_one=True`) | after sell fill | next-day-sellable | yes |
-| Price limits | `price_limits` | before buy / sell intent | reject limit-up buy, reject limit-down sell | no |
-| Suspension | `suspension` | every bar | no fill when halted | no |
+| Price limits | `price_limits` | before buy / sell intent | reject limit-up buy, reject limit-down sell | yes (runner-hook enforced) |
+| Suspension | `suspension` | every bar | no fill when halted | yes (runner-hook enforced) |
 | Ex-dividend (qfq) | `ex_dividend` | every bar | qfq adjust | data-layer qfq (W2) |
-| ST stock filter | `st_filter` | at universe build | default excludes ST | no |
+| ST stock filter | `st_filter` | at universe build | default excludes ST | yes (universe-hook enforced) |
 | 100-share lot | `lot_enforcement` | every fill | round-down to nearest lot | yes buy-side strict (`close_position` bypasses) |
 | Stamp tax (sell only) | `stamp_tax` | every fill | 0.1% on sells | yes |
-| Survivorship bias | `delisted_universe` | at universe build | include delisted | no |
+| Survivorship bias | `delisted_universe` | at universe build | include delisted | yes (universe-hook enforced) |
 
 !!! warning "Edges of AKQuant's built-ins"
 - T+1: AKQuant built-in, but `close_position` path does NOT round lots (see [`lot_enforcement`](https://github.com/shaok1814-lang/quant-platform/blob/master/backtest/a_share/lot_enforcement.py)).
-- Price limits / suspension / ST / survivorship: **AKQuant does NOT provide** — must self-research. Otherwise the backtest buys "ghost positions" that can never be sold.
+- Price limits / suspension / ST / survivorship: AKQuant does NOT provide. The 4 `backtest/a_share/` pure-function modules implement the rules, and the runner-hook / universe-hook layers auto-enforce them in the production pipeline (since W7.1 follow-up).
 - qfq adjustment: AKQuant's data layer handles it, but `ex_dividend`'s sanity-check (adj_factor jump detection) is redundant insurance.
+
+!!! note "Two-tier enforcement pattern"
+- **Runner-hook** (price-limits / suspension): `execution/runner.py:_check_intent` calls `check_price_limit` + `check_suspension` before submitting each intent. Configurable via `RiskConfig.enable_*_guard` + `PaperSessionConfig.board_map` / `st_set`.
+- **Universe-hook** (ST / survivorship): `ops/universe.py:load_filtered_universe` calls `filter_st` + `build_universe(include_delisted=True)` at universe build time. Snapshots from `data/{st_a_share,delisted_a_share}_list.csv` (refreshed by `scripts/snapshot_st_delisted.py`).
 
 ## Event-trigger matrix
 

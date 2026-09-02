@@ -67,6 +67,8 @@ from execution.risk import (
     check_daily_trade_count,
     check_drawdown_kill_switch,
     check_position_cap,
+    check_price_limit,
+    check_suspension,
 )
 
 __all__ = [
@@ -125,6 +127,19 @@ class PaperSessionConfig:
             spy closure. ``None`` (default) keeps the W7.1 paper-
             only behavior — kill switch still halts the session,
             but the operator only sees a loguru WARNING line.
+        board_map: Per-symbol exchange-board map for A-share
+            涨跌停 (CLAUDE.md 「涨停日不可买入，跌停日不可
+            卖出」) lookup. ``None`` (default) falls back to
+            :func:`board_for_symbol` (code-prefix heuristic).
+            Pass an explicit map for backtests where the strategy
+            trades symbols whose board is not derivable from
+            code (e.g. ETFs, BJS).
+        st_set: Set of symbols currently in ST status (used by
+            the price-limit guard to apply the 5% ST band instead
+            of the board's normal band). ``None`` (default) skips
+            the ST detection (treats every symbol as non-ST).
+            Production wires the offline ``fetch_st_symbols``
+            snapshot.
     """
 
     initial_cash: float = DEFAULT_INITIAL_CASH
@@ -134,6 +149,8 @@ class PaperSessionConfig:
     max_history_depth: int = 50
     bar_column: str = "date"
     notify_fn: Callable[[str, str], None] | None = None
+    board_map: dict[str, Any] | None = None
+    st_set: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -466,6 +483,13 @@ def run_paper_session(
         n_intents += len(intents)
 
         for intent in intents:
+            # Per-symbol recent bars for the price_limit /
+            # suspension guards. ``recent_per_symbol`` already
+            # has this bar (i == i) appended earlier in the loop;
+            # for prev_close we need bar i-1.
+            recent = recent_per_symbol.get(intent.symbol, [])
+            current_bar = recent[-1] if recent else None
+            prev_bar = recent[-2] if len(recent) >= 2 else None
             decision = _check_intent(
                 intent=intent,
                 adapter=adapter,
@@ -474,6 +498,10 @@ def run_paper_session(
                 bar_timestamp=ts,
                 kill_switch_active=kill_switch_active,
                 day=ts.date(),
+                session_cfg=session_cfg,
+                current_close=current_bar["close"] if current_bar else None,
+                prev_close=prev_bar["close"] if prev_bar else None,
+                current_volume=int(current_bar["volume"]) if current_bar else None,
             )
             if isinstance(decision, Reject):
                 n_risk_rejected += 1
@@ -590,13 +618,20 @@ def _check_intent(
     bar_timestamp: datetime,
     kill_switch_active: bool,
     day: date_cls,
+    session_cfg: PaperSessionConfig | None = None,
+    current_close: float | None = None,
+    prev_close: float | None = None,
+    current_volume: int | None = None,
 ) -> Allow | Reject:
-    """Run all three risk checks in sequence; short-circuit on Reject.
+    """Run all risk checks in sequence; short-circuit on Reject.
 
     Order:
       1. Kill switch (if active, reject all)
       2. Position cap (only matters for buys)
-      3. Daily trade count
+      3. Price-limit guard (涨跌停) — A-share 涨停禁买/跌停禁卖.
+         Only runs when ``session_cfg`` + bar data are provided.
+      4. Suspension guard (停牌) — bars with volume == 0.
+      5. Daily trade count
 
     Daily count is read from the journal (``compute_daily_trade_count``)
     so the journal is the single source of truth — even after a
@@ -620,6 +655,52 @@ def _check_intent(
     )
     if isinstance(pos_decision, Reject):
         return pos_decision
+
+    # A-share 涨跌停 (CLAUDE.md 「涨停日不可买入，跌停日不可卖出」).
+    # Opt-in: only runs when both session_cfg and bar data are threaded
+    # through. Existing callers (tests) that pass no session_cfg / bar
+    # data skip the check unchanged.
+    if (
+        session_cfg is not None
+        and current_close is not None
+        and prev_close is not None
+        and risk_cfg.enable_price_limit_guard
+    ):
+        from backtest.a_share.board_lookup import board_for_symbol
+
+        if session_cfg.board_map is not None:
+            board = session_cfg.board_map.get(intent.symbol) or board_for_symbol(intent.symbol)
+        else:
+            board = board_for_symbol(intent.symbol)
+        is_st = (
+            intent.symbol in session_cfg.st_set
+            if session_cfg.st_set is not None
+            else False
+        )
+        pl_decision = check_price_limit(
+            intent=intent,
+            current_close=current_close,
+            prev_close=prev_close,
+            board=board,
+            is_st=is_st,
+            cfg=risk_cfg,
+        )
+        if isinstance(pl_decision, Reject):
+            return pl_decision
+
+    # A-share 停牌 (CLAUDE.md 「停牌日无成交」).
+    if (
+        current_volume is not None
+        and risk_cfg.enable_suspension_guard
+    ):
+        sus_decision = check_suspension(
+            intent=intent,
+            current_volume=current_volume,
+            cfg=risk_cfg,
+        )
+        if isinstance(sus_decision, Reject):
+            return sus_decision
+
     # Daily trade count.
     today_trades = journal.compute_daily_trade_count(day)
     count_decision = check_daily_trade_count(today_trades, risk_cfg)

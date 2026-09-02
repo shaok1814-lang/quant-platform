@@ -300,6 +300,8 @@ class RiskConfig:
     max_daily_trades: int = 20
     drawdown_kill_switch_pct: float = 0.05
     enabled: bool = True
+    enable_price_limit_guard: bool = True
+    enable_suspension_guard: bool = True
 
 
 # Replace the sentinel with the real default now that RiskConfig is

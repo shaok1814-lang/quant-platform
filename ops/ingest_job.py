@@ -55,7 +55,7 @@ from data_layer.storage.duck import DuckStore
 from loguru import logger
 
 from ops.quality import QualityReport, check_quality
-from ops.universe import UniverseEntry, load_universe
+from ops.universe import UniverseEntry, load_filtered_universe, load_universe
 
 __all__ = [
     "DEFAULT_DUCKDB_PATH",
@@ -213,6 +213,7 @@ def run_daily_ingest(
     universe_path: str | Path | None = None,
     fetcher: Fetcher | None = None,
     notify_on_hard: bool = True,
+    include_delisted: bool = False,
 ) -> IngestReport:
     """Run the daily ingest pipeline for ``date``.
 
@@ -229,6 +230,11 @@ def run_daily_ingest(
         notify_on_hard: If ``True`` (default), send a 钉聊 alert
             on any HARD quality failures. Set to ``False`` in
             tests so the alert channel never fires accidentally.
+        include_delisted: If ``True`` (default), append delisted
+            symbols from the snapshot to the universe so a
+            backtest sample satisfies CLAUDE.md "幸存者偏差".
+            Tests with a tiny ``tmp_path/universe.yaml`` pass
+            ``include_delisted=False`` to keep expected counts.
 
     Returns:
         :class:`IngestReport` aggregating per-symbol outcomes.
@@ -244,7 +250,9 @@ def run_daily_ingest(
     target = date or datetime.now(UTC).date()
     started = datetime.now(UTC)
     t0 = time.monotonic()
-    universe = load_universe(universe_path)
+    universe = load_filtered_universe(
+        universe_path, include_delisted=include_delisted
+    )
     db_path = Path(duckdb_path) if duckdb_path is not None else DEFAULT_DUCKDB_PATH
     fetch = fetcher if fetcher is not None else _default_fetcher()
 
@@ -301,6 +309,7 @@ def ingest_window(
     universe_path: str | Path | None = None,
     fetcher: Fetcher | None = None,
     notify_on_hard: bool = True,
+    include_delisted: bool = False,
 ) -> IngestReport:
     """Run the ingest pipeline for an inclusive ``(start, end)`` window.
 
@@ -335,7 +344,9 @@ def ingest_window(
 
     started = datetime.now(UTC)
     t0 = time.monotonic()
-    universe = load_universe(universe_path)
+    universe = load_filtered_universe(
+        universe_path, include_delisted=include_delisted
+    )
     db_path = Path(duckdb_path) if duckdb_path is not None else DEFAULT_DUCKDB_PATH
     fetch = fetcher if fetcher is not None else _default_fetcher()
 

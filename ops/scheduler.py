@@ -127,6 +127,7 @@ def build_scheduler(
         run_daily_ingest,
         CronTrigger(hour=hour, minute=minute, timezone=timezone),
         id="daily_ingest",
+        kwargs={"include_delisted": True},
         name="Daily OHLCV ingest",
         # ``misfire_grace_time=None`` → APScheduler's default
         # (no grace window); a missed run is dropped, the next

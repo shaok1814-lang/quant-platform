@@ -68,7 +68,7 @@ import pandas as pd
 from data_layer.validation.cross_source import validate
 from loguru import logger
 
-from ops.universe import UniverseEntry, load_universe
+from ops.universe import UniverseEntry, load_filtered_universe, load_universe
 
 __all__ = [
     "DEFAULT_THRESHOLD_BPS",
@@ -411,6 +411,7 @@ def run_cross_source_check(
     baostock_fetcher: BaostockFetcher | None = None,
     threshold_bps: float = DEFAULT_THRESHOLD_BPS,
     notify_on_fail: bool = True,
+    include_delisted: bool = False,
 ) -> CrossSourceReport:
     """Run the dual-fetch cross-source check for ``date``.
 
@@ -448,7 +449,9 @@ def run_cross_source_check(
     target = date or datetime.now(UTC).date()
     started = datetime.now(UTC)
     t0 = time.monotonic()
-    universe = load_universe(universe_path)
+    universe = load_filtered_universe(
+        universe_path, include_delisted=include_delisted
+    )
     ak_fetch = akshare_fetcher if akshare_fetcher is not None else _default_akshare_fetcher()
     bs_fetch = baostock_fetcher if baostock_fetcher is not None else _default_baostock_fetcher()
 
